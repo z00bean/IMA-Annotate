@@ -68,6 +68,9 @@
                                 <button type="button" id="save-btn" class="btn btn-outline-secondary">
                                     <i class="bi bi-save"></i> Save
                                 </button>
+                                <button type="button" id="manual-save-btn" class="btn btn-outline-secondary" title="Manual Save (Ctrl+Shift+S)">
+                                    <i class="bi bi-save-fill"></i> Manual Save
+                                </button>
                                 <button type="button" id="export-btn" class="btn btn-outline-dark">
                                     <i class="bi bi-download"></i> Export
                                 </button>
@@ -154,6 +157,30 @@
                         <button type="button" id="clear-roi-btn" class="btn btn-outline-danger btn-sm">
                             Clear ROI
                         </button>
+                    </div>
+                </div>
+
+                <!-- Keyboard Shortcuts Help -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Keyboard Shortcuts</h5>
+                    </div>
+                    <div class="card-body">
+                        <small class="text-muted">
+                            <strong>Navigation:</strong><br>
+                            ← → Arrow keys: Navigate images<br>
+                            <strong>Drawing:</strong><br>
+                            D: Draw mode, V: Select mode<br>
+                            <strong>Save & Export:</strong><br>
+                            Ctrl+S: Save, Ctrl+Shift+S: Manual Save<br>
+                            <strong>Selected Annotation:</strong><br>
+                            Delete: Remove annotation<br>
+                            Ctrl+V: Verify<br>
+                            Ctrl+R: Reject<br>
+                            Ctrl+M: Mark as Modified<br>
+                            Ctrl+E: Edit annotation<br>
+                            Double-click: Edit annotation
+                        </small>
                     </div>
                 </div>
             </div>

@@ -49,6 +49,17 @@ export const CONFIG = {
         SELECTION_TOLERANCE: 5
     },
     
+    // ROI Configuration
+    ROI: {
+        LINE_WIDTH: 3,
+        FILL_OPACITY: 0.2,
+        STROKE_COLOR: "#FF4500",    // Orange Red
+        FILL_COLOR: "#FF4500",      // Orange Red
+        POINT_RADIUS: 6,
+        MIN_POINTS: 3,
+        SELECTION_TOLERANCE: 8
+    },
+    
     // UI Configuration
     UI: {
         ANIMATION_DURATION: 300,
@@ -71,6 +82,7 @@ export const CONFIG = {
         SAVE: "KeyS",
         DRAW_MODE: "KeyD",
         SELECT_MODE: "KeyV",
+        ROI_MODE: "KeyR",
         DELETE: "Delete",
         ESCAPE: "Escape"
     },

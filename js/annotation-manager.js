@@ -23,6 +23,9 @@ export class AnnotationManager {
         this.annotationHistory = [];
         this.maxHistorySize = 100;
         
+        // Session management
+        this.sessionId = null;
+        
         // Auto-save configuration
         this.autoSaveEnabled = true;
         this.autoSaveDelay = CONFIG.UI.AUTO_SAVE_DELAY || 1000;
@@ -34,6 +37,9 @@ export class AnnotationManager {
         this.onAnnotationStateChanged = null;
         this.onSaveComplete = null;
         this.onSaveError = null;
+        
+        // Load history from local storage on initialization
+        this.loadHistoryFromLocalStorage();
         
         console.log('AnnotationManager initialized');
     }
@@ -504,9 +510,10 @@ export class AnnotationManager {
      * Export annotations in specified format
      * @param {string} format - Export format (yolo, pascal_voc, coco)
      * @param {string} imageId - Optional image ID (defaults to current image)
+     * @param {Object} imageMetadata - Optional image metadata for proper export
      * @returns {Object} - Export result
      */
-    exportAnnotations(format = 'yolo', imageId = null) {
+    exportAnnotations(format = 'yolo', imageId = null, imageMetadata = null) {
         const targetImageId = imageId || this.currentImageId;
         if (!targetImageId) {
             return {
@@ -519,16 +526,29 @@ export class AnnotationManager {
         
         try {
             let exportData;
+            let filename;
+            let mimeType = 'application/json';
             
             switch (format.toLowerCase()) {
                 case 'yolo':
-                    exportData = this.exportToYOLO(annotations);
+                    exportData = this.exportToYOLO(annotations, imageMetadata);
+                    filename = `annotations_yolo_${targetImageId}_${Date.now()}.txt`;
+                    mimeType = 'text/plain';
                     break;
                 case 'pascal_voc':
-                    exportData = this.exportToPascalVOC(annotations);
+                    exportData = this.exportToPascalVOC(annotations, imageMetadata);
+                    filename = `annotations_voc_${targetImageId}_${Date.now()}.xml`;
+                    mimeType = 'application/xml';
                     break;
                 case 'coco':
-                    exportData = this.exportToCOCO(annotations);
+                    exportData = this.exportToCOCO(annotations, imageMetadata);
+                    filename = `annotations_coco_${targetImageId}_${Date.now()}.json`;
+                    mimeType = 'application/json';
+                    break;
+                case 'json':
+                    exportData = this.exportToJSON(annotations, imageMetadata);
+                    filename = `annotations_${targetImageId}_${Date.now()}.json`;
+                    mimeType = 'application/json';
                     break;
                 default:
                     throw new Error(`Unsupported export format: ${format}`);
@@ -540,11 +560,55 @@ export class AnnotationManager {
                 success: true,
                 format: format,
                 data: exportData,
-                annotationCount: annotations.length
+                filename: filename,
+                mimeType: mimeType,
+                annotationCount: annotations.length,
+                imageId: targetImageId
             };
 
         } catch (error) {
             console.error(`Failed to export annotations in ${format} format:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Export all annotations for all images
+     * @param {string} format - Export format
+     * @returns {Object} - Export result with all images
+     */
+    exportAllAnnotations(format = 'json') {
+        try {
+            const allExports = {};
+            let totalAnnotations = 0;
+
+            for (const [imageId, annotations] of this.annotations.entries()) {
+                if (annotations.length > 0) {
+                    const exportResult = this.exportAnnotations(format, imageId);
+                    if (exportResult.success) {
+                        allExports[imageId] = exportResult.data;
+                        totalAnnotations += annotations.length;
+                    }
+                }
+            }
+
+            const filename = `all_annotations_${format}_${Date.now()}.json`;
+            
+            return {
+                success: true,
+                format: format,
+                data: allExports,
+                filename: filename,
+                mimeType: 'application/json',
+                annotationCount: totalAnnotations,
+                imageCount: Object.keys(allExports).length
+            };
+
+        } catch (error) {
+            console.error('Failed to export all annotations:', error);
             return {
                 success: false,
                 error: error.message
@@ -602,6 +666,9 @@ export class AnnotationManager {
                     : `Saved ${successCount} annotations, ${errorCount} failed`
             };
 
+            // Always save to local storage as backup
+            await this.saveToLocalStorage();
+
             // Notify listeners
             if (saveResult.success) {
                 this.notifySaveComplete(saveResult);
@@ -614,6 +681,14 @@ export class AnnotationManager {
         } catch (error) {
             console.error('Failed to save annotations:', error);
             
+            // Try to save to local storage as fallback
+            try {
+                await this.saveToLocalStorage();
+                console.log('Saved to local storage as fallback');
+            } catch (localError) {
+                console.error('Failed to save to local storage:', localError);
+            }
+            
             const saveResult = {
                 success: false,
                 error: error.message,
@@ -622,6 +697,143 @@ export class AnnotationManager {
 
             this.notifySaveError(saveResult);
             return saveResult;
+        }
+    }
+
+    /**
+     * Manual save functionality as backup
+     * @returns {Promise<Object>} - Save result
+     */
+    async manualSave() {
+        console.log('Manual save requested');
+        
+        try {
+            // Save to local storage
+            const localSaveResult = await this.saveToLocalStorage();
+            
+            // Also try to save to API
+            const apiSaveResult = await this.saveAnnotations(true);
+            
+            return {
+                success: true,
+                message: 'Manual save completed',
+                localSave: localSaveResult,
+                apiSave: apiSaveResult
+            };
+            
+        } catch (error) {
+            console.error('Manual save failed:', error);
+            return {
+                success: false,
+                error: error.message,
+                message: 'Manual save failed'
+            };
+        }
+    }
+
+    /**
+     * Save annotations to local storage
+     * @returns {Promise<Object>} - Save result
+     */
+    async saveToLocalStorage() {
+        try {
+            const storageData = {
+                annotations: {},
+                history: this.annotationHistory,
+                timestamp: new Date().toISOString(),
+                version: '1.0'
+            };
+
+            // Convert Map to plain object for storage
+            for (const [imageId, annotations] of this.annotations.entries()) {
+                storageData.annotations[imageId] = annotations;
+            }
+
+            const dataString = JSON.stringify(storageData);
+            localStorage.setItem('ima_annotations', dataString);
+            
+            console.log(`Saved ${Object.keys(storageData.annotations).length} image annotations to local storage`);
+            
+            return {
+                success: true,
+                message: 'Saved to local storage',
+                imageCount: Object.keys(storageData.annotations).length,
+                historyCount: this.annotationHistory.length
+            };
+            
+        } catch (error) {
+            console.error('Failed to save to local storage:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Load annotations from local storage
+     * @returns {Promise<Object>} - Load result
+     */
+    async loadFromLocalStorage() {
+        try {
+            const dataString = localStorage.getItem('ima_annotations');
+            if (!dataString) {
+                return {
+                    success: false,
+                    error: 'No data found in local storage'
+                };
+            }
+
+            const storageData = JSON.parse(dataString);
+            
+            // Validate data structure
+            if (!storageData.annotations || !storageData.history) {
+                throw new Error('Invalid data structure in local storage');
+            }
+
+            // Clear current data
+            this.annotations.clear();
+            this.annotationHistory = [];
+
+            // Load annotations
+            for (const [imageId, annotations] of Object.entries(storageData.annotations)) {
+                this.annotations.set(imageId, annotations);
+            }
+
+            // Load history
+            this.annotationHistory = storageData.history || [];
+
+            console.log(`Loaded ${Object.keys(storageData.annotations).length} image annotations from local storage`);
+            
+            return {
+                success: true,
+                message: 'Loaded from local storage',
+                imageCount: Object.keys(storageData.annotations).length,
+                historyCount: this.annotationHistory.length,
+                timestamp: storageData.timestamp
+            };
+            
+        } catch (error) {
+            console.error('Failed to load from local storage:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Clear local storage data
+     * @returns {boolean} - Success status
+     */
+    clearLocalStorage() {
+        try {
+            localStorage.removeItem('ima_annotations');
+            console.log('Cleared local storage data');
+            return true;
+        } catch (error) {
+            console.error('Failed to clear local storage:', error);
+            return false;
         }
     }
 
@@ -751,11 +963,13 @@ export class AnnotationManager {
      */
     addToHistory(action, annotation, originalAnnotation = null) {
         const historyEntry = {
+            id: this.generateHistoryId(),
             timestamp: new Date(),
             action: action,
             annotation: { ...annotation },
             originalAnnotation: originalAnnotation ? { ...originalAnnotation } : null,
-            imageId: this.currentImageId
+            imageId: this.currentImageId,
+            sessionId: this.getSessionId()
         };
 
         this.annotationHistory.push(historyEntry);
@@ -764,64 +978,384 @@ export class AnnotationManager {
         if (this.annotationHistory.length > this.maxHistorySize) {
             this.annotationHistory.shift();
         }
+
+        // Save history to local storage periodically
+        this.saveHistoryToLocalStorage();
     }
 
-    getHistory() {
-        return [...this.annotationHistory];
+    getHistory(imageId = null, limit = null) {
+        let history = [...this.annotationHistory];
+        
+        // Filter by image ID if specified
+        if (imageId) {
+            history = history.filter(entry => entry.imageId === imageId);
+        }
+        
+        // Limit results if specified
+        if (limit && limit > 0) {
+            history = history.slice(-limit);
+        }
+        
+        return history;
+    }
+
+    /**
+     * Get history statistics
+     * @returns {Object} - History statistics
+     */
+    getHistoryStats() {
+        const stats = {
+            totalEntries: this.annotationHistory.length,
+            actionCounts: {},
+            imageStats: {},
+            sessionStats: {},
+            timeRange: null
+        };
+
+        if (this.annotationHistory.length === 0) {
+            return stats;
+        }
+
+        // Count actions
+        this.annotationHistory.forEach(entry => {
+            stats.actionCounts[entry.action] = (stats.actionCounts[entry.action] || 0) + 1;
+            
+            // Count per image
+            if (!stats.imageStats[entry.imageId]) {
+                stats.imageStats[entry.imageId] = { total: 0, actions: {} };
+            }
+            stats.imageStats[entry.imageId].total++;
+            stats.imageStats[entry.imageId].actions[entry.action] = 
+                (stats.imageStats[entry.imageId].actions[entry.action] || 0) + 1;
+            
+            // Count per session
+            if (entry.sessionId) {
+                if (!stats.sessionStats[entry.sessionId]) {
+                    stats.sessionStats[entry.sessionId] = { total: 0, actions: {} };
+                }
+                stats.sessionStats[entry.sessionId].total++;
+                stats.sessionStats[entry.sessionId].actions[entry.action] = 
+                    (stats.sessionStats[entry.sessionId].actions[entry.action] || 0) + 1;
+            }
+        });
+
+        // Calculate time range
+        const timestamps = this.annotationHistory.map(entry => entry.timestamp);
+        stats.timeRange = {
+            start: new Date(Math.min(...timestamps)),
+            end: new Date(Math.max(...timestamps))
+        };
+
+        return stats;
+    }
+
+    /**
+     * Export history to file
+     * @param {string} format - Export format (json, csv)
+     * @returns {Object} - Export result
+     */
+    exportHistory(format = 'json') {
+        try {
+            let exportData;
+            let filename;
+            let mimeType;
+
+            switch (format.toLowerCase()) {
+                case 'json':
+                    exportData = JSON.stringify({
+                        history: this.annotationHistory,
+                        stats: this.getHistoryStats(),
+                        exportedAt: new Date().toISOString()
+                    }, null, 2);
+                    filename = `annotation_history_${Date.now()}.json`;
+                    mimeType = 'application/json';
+                    break;
+                    
+                case 'csv':
+                    exportData = this.historyToCSV();
+                    filename = `annotation_history_${Date.now()}.csv`;
+                    mimeType = 'text/csv';
+                    break;
+                    
+                default:
+                    throw new Error(`Unsupported history export format: ${format}`);
+            }
+
+            return {
+                success: true,
+                format: format,
+                data: exportData,
+                filename: filename,
+                mimeType: mimeType,
+                entryCount: this.annotationHistory.length
+            };
+
+        } catch (error) {
+            console.error('Failed to export history:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Convert history to CSV format
+     * @returns {string} - CSV data
+     */
+    historyToCSV() {
+        const headers = [
+            'ID', 'Timestamp', 'Action', 'Image ID', 'Annotation ID', 
+            'Class Name', 'Confidence', 'State', 'Session ID'
+        ];
+        
+        const rows = this.annotationHistory.map(entry => [
+            entry.id,
+            entry.timestamp.toISOString(),
+            entry.action,
+            entry.imageId,
+            entry.annotation.id,
+            entry.annotation.className,
+            entry.annotation.confidence,
+            entry.annotation.state,
+            entry.sessionId || ''
+        ]);
+
+        return [headers, ...rows]
+            .map(row => row.map(cell => `"${cell}"`).join(','))
+            .join('\n');
+    }
+
+    /**
+     * Save history to local storage
+     */
+    saveHistoryToLocalStorage() {
+        try {
+            const historyData = {
+                history: this.annotationHistory,
+                timestamp: new Date().toISOString()
+            };
+            
+            localStorage.setItem('ima_annotation_history', JSON.stringify(historyData));
+        } catch (error) {
+            console.error('Failed to save history to local storage:', error);
+        }
+    }
+
+    /**
+     * Load history from local storage
+     */
+    loadHistoryFromLocalStorage() {
+        try {
+            const dataString = localStorage.getItem('ima_annotation_history');
+            if (dataString) {
+                const historyData = JSON.parse(dataString);
+                this.annotationHistory = historyData.history || [];
+                console.log(`Loaded ${this.annotationHistory.length} history entries from local storage`);
+            }
+        } catch (error) {
+            console.error('Failed to load history from local storage:', error);
+            this.annotationHistory = [];
+        }
+    }
+
+    /**
+     * Clear history
+     * @param {string} imageId - Optional image ID to clear history for specific image
+     */
+    clearHistory(imageId = null) {
+        if (imageId) {
+            this.annotationHistory = this.annotationHistory.filter(entry => entry.imageId !== imageId);
+            console.log(`Cleared history for image ${imageId}`);
+        } else {
+            this.annotationHistory = [];
+            console.log('Cleared all history');
+        }
+        
+        this.saveHistoryToLocalStorage();
+    }
+
+    /**
+     * Generate unique history ID
+     */
+    generateHistoryId() {
+        return 'hist_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    /**
+     * Get or create session ID
+     */
+    getSessionId() {
+        if (!this.sessionId) {
+            this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        return this.sessionId;
     }
 
     /**
      * Export format implementations
      */
-    exportToYOLO(annotations) {
-        // YOLO format: class_id center_x center_y width height (normalized)
-        return annotations.map(annotation => {
-            const classId = this.getClassIdForYOLO(annotation.className);
-            // Note: This assumes image dimensions are available - would need to be passed in
-            // For now, return raw format that can be normalized later
-            return {
-                class_id: classId,
-                bbox: annotation.bbox,
-                confidence: annotation.confidence
-            };
-        });
+    exportToYOLO(annotations, imageMetadata = null) {
+        // YOLO format: class_id center_x center_y width height (normalized 0-1)
+        const imageWidth = imageMetadata?.width || 1;
+        const imageHeight = imageMetadata?.height || 1;
+        
+        const yoloLines = annotations
+            .filter(annotation => annotation.state !== 'Rejected')
+            .map(annotation => {
+                const classId = this.getClassIdForYOLO(annotation.className);
+                const bbox = annotation.bbox;
+                
+                // Convert to YOLO format (normalized center coordinates)
+                const centerX = (bbox.x + bbox.width / 2) / imageWidth;
+                const centerY = (bbox.y + bbox.height / 2) / imageHeight;
+                const width = bbox.width / imageWidth;
+                const height = bbox.height / imageHeight;
+                
+                return `${classId} ${centerX.toFixed(6)} ${centerY.toFixed(6)} ${width.toFixed(6)} ${height.toFixed(6)}`;
+            });
+        
+        return yoloLines.join('\n');
     }
 
-    exportToPascalVOC(annotations) {
-        // Pascal VOC XML format structure
-        return {
-            annotations: annotations.map(annotation => ({
-                name: annotation.className,
-                bndbox: {
-                    xmin: annotation.bbox.x,
-                    ymin: annotation.bbox.y,
-                    xmax: annotation.bbox.x + annotation.bbox.width,
-                    ymax: annotation.bbox.y + annotation.bbox.height
-                },
-                confidence: annotation.confidence,
-                difficult: annotation.state === 'Rejected' ? 1 : 0
-            }))
-        };
+    exportToPascalVOC(annotations, imageMetadata = null) {
+        // Pascal VOC XML format
+        const imageWidth = imageMetadata?.width || 1;
+        const imageHeight = imageMetadata?.height || 1;
+        const imageName = imageMetadata?.filename || 'unknown.jpg';
+        
+        const validAnnotations = annotations.filter(annotation => annotation.state !== 'Rejected');
+        
+        const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<annotation>
+    <folder>images</folder>
+    <filename>${imageName}</filename>
+    <path>${imageName}</path>
+    <source>
+        <database>IMA Annotate</database>
+    </source>
+    <size>
+        <width>${imageWidth}</width>
+        <height>${imageHeight}</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+${validAnnotations.map(annotation => `    <object>
+        <name>${annotation.className}</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>${annotation.state === 'Modified' ? 1 : 0}</difficult>
+        <bndbox>
+            <xmin>${Math.round(annotation.bbox.x)}</xmin>
+            <ymin>${Math.round(annotation.bbox.y)}</ymin>
+            <xmax>${Math.round(annotation.bbox.x + annotation.bbox.width)}</xmax>
+            <ymax>${Math.round(annotation.bbox.y + annotation.bbox.height)}</ymax>
+        </bndbox>
+        <confidence>${annotation.confidence}</confidence>
+    </object>`).join('\n')}
+</annotation>`;
+        
+        return xmlContent;
     }
 
-    exportToCOCO(annotations) {
+    exportToCOCO(annotations, imageMetadata = null) {
         // COCO format structure
+        const imageWidth = imageMetadata?.width || 1;
+        const imageHeight = imageMetadata?.height || 1;
+        const imageId = imageMetadata?.id || 1;
+        const imageName = imageMetadata?.filename || 'unknown.jpg';
+        
+        const validAnnotations = annotations.filter(annotation => annotation.state !== 'Rejected');
+        
+        const categories = Object.keys(CONFIG.ANNOTATION_COLORS).map((className, index) => ({
+            id: index + 1,
+            name: className,
+            supercategory: 'vehicle'
+        }));
+        
+        const cocoAnnotations = validAnnotations.map((annotation, index) => ({
+            id: index + 1,
+            image_id: imageId,
+            category_id: this.getCategoryIdForCOCO(annotation.className),
+            bbox: [
+                annotation.bbox.x,
+                annotation.bbox.y,
+                annotation.bbox.width,
+                annotation.bbox.height
+            ],
+            area: annotation.bbox.width * annotation.bbox.height,
+            iscrowd: 0,
+            score: annotation.confidence,
+            attributes: {
+                state: annotation.state,
+                created_at: annotation.createdAt,
+                modified_at: annotation.modifiedAt
+            }
+        }));
+        
         return {
-            annotations: annotations.map((annotation, index) => ({
-                id: index + 1,
-                image_id: 1, // Would need actual image ID
-                category_id: this.getCategoryIdForCOCO(annotation.className),
-                bbox: [
-                    annotation.bbox.x,
-                    annotation.bbox.y,
-                    annotation.bbox.width,
-                    annotation.bbox.height
-                ],
-                area: annotation.bbox.width * annotation.bbox.height,
-                iscrowd: 0,
-                score: annotation.confidence
-            }))
+            info: {
+                description: "IMA Annotate Export",
+                version: "1.0",
+                year: new Date().getFullYear(),
+                contributor: "IMA Annotate Frontend",
+                date_created: new Date().toISOString()
+            },
+            licenses: [{
+                id: 1,
+                name: "Unknown",
+                url: ""
+            }],
+            images: [{
+                id: imageId,
+                width: imageWidth,
+                height: imageHeight,
+                file_name: imageName,
+                license: 1,
+                flickr_url: "",
+                coco_url: "",
+                date_captured: new Date().toISOString()
+            }],
+            annotations: cocoAnnotations,
+            categories: categories
         };
+    }
+
+    exportToJSON(annotations, imageMetadata = null) {
+        // Custom JSON format with full annotation data
+        return {
+            metadata: {
+                imageId: this.currentImageId,
+                imageMetadata: imageMetadata,
+                exportedAt: new Date().toISOString(),
+                exportedBy: "IMA Annotate Frontend",
+                version: "1.0"
+            },
+            annotations: annotations.map(annotation => ({
+                ...annotation,
+                // Convert dates to ISO strings for JSON serialization
+                createdAt: annotation.createdAt.toISOString(),
+                modifiedAt: annotation.modifiedAt.toISOString()
+            })),
+            summary: {
+                total: annotations.length,
+                byState: this.getAnnotationCounts(),
+                byClass: this.getAnnotationCountsByClass(annotations)
+            }
+        };
+    }
+
+    /**
+     * Get annotation counts by class
+     * @param {Array} annotations - Annotations to count
+     * @returns {Object} - Count by class
+     */
+    getAnnotationCountsByClass(annotations) {
+        const counts = {};
+        annotations.forEach(annotation => {
+            counts[annotation.className] = (counts[annotation.className] || 0) + 1;
+        });
+        return counts;
     }
 
     getClassIdForYOLO(className) {

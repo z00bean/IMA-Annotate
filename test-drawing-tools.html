@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing Tools Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #test-canvas {
+            border: 2px solid #ccc;
+            display: block;
+            margin: 20px 0;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .test-pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <h1>Drawing Tools Test</h1>
+    <p>This page tests the basic functionality of the drawing tools module.</p>
+    
+    <canvas id="test-canvas" width="400" height="300"></canvas>
+    
+    <div id="test-results"></div>
+    
+    <script type="module">
+        import { CONFIG } from './config.js';
+        import { DrawingTools } from './js/drawing-tools.js';
+        
+        const results = document.getElementById('test-results');
+        
+        function addResult(testName, passed, message) {
+            const div = document.createElement('div');
+            div.className = `test-result ${passed ? 'test-pass' : 'test-fail'}`;
+            div.innerHTML = `<strong>${testName}:</strong> ${passed ? 'PASS' : 'FAIL'} - ${message}`;
+            results.appendChild(div);
+        }
+        
+        // Test 1: Module imports
+        try {
+            addResult('Module Import', true, 'DrawingTools class imported successfully');
+        } catch (error) {
+            addResult('Module Import', false, `Failed to import: ${error.message}`);
+        }
+        
+        // Test 2: Configuration
+        try {
+            const hasDrawingConfig = CONFIG.DRAWING && CONFIG.DRAWING.MIN_BOX_SIZE;
+            addResult('Configuration', hasDrawingConfig, hasDrawingConfig ? 'Drawing configuration found' : 'Drawing configuration missing');
+        } catch (error) {
+            addResult('Configuration', false, `Configuration error: ${error.message}`);
+        }
+        
+        // Test 3: Canvas setup
+        try {
+            const canvas = document.getElementById('test-canvas');
+            const canvasExists = canvas && canvas.getContext;
+            addResult('Canvas Setup', canvasExists, canvasExists ? 'Canvas element found and functional' : 'Canvas element not found or non-functional');
+        } catch (error) {
+            addResult('Canvas Setup', false, `Canvas error: ${error.message}`);
+        }
+        
+        // Test 4: DrawingTools instantiation
+        try {
+            const canvas = document.getElementById('test-canvas');
+            // Create a mock canvas renderer for testing
+            const mockCanvasRenderer = {
+                getCanvasCoordinates: (x, y) => ({ x, y }),
+                isPointInImage: () => true,
+                getAnnotationAtPoint: () => null,
+                redraw: () => {},
+                getContext: () => canvas.getContext('2d')
+            };
+            
+            const drawingTools = new DrawingTools(canvas, mockCanvasRenderer);
+            const isInstance = drawingTools instanceof DrawingTools;
+            addResult('DrawingTools Instantiation', isInstance, isInstance ? 'DrawingTools instance created successfully' : 'Failed to create DrawingTools instance');
+            
+            // Test 5: Method existence
+            const hasMethods = typeof drawingTools.enableDrawMode === 'function' &&
+                              typeof drawingTools.disableDrawMode === 'function' &&
+                              typeof drawingTools.handleMouseEvents === 'function' &&
+                              typeof drawingTools.handleTouchEvents === 'function';
+            addResult('Method Existence', hasMethods, hasMethods ? 'All required methods exist' : 'Some required methods missing');
+            
+            // Test 6: Drawing mode toggle
+            drawingTools.enableDrawMode();
+            const drawingEnabled = drawingTools.drawingMode === true;
+            drawingTools.disableDrawMode();
+            const drawingDisabled = drawingTools.drawingMode === false;
+            addResult('Drawing Mode Toggle', drawingEnabled && drawingDisabled, 
+                     drawingEnabled && drawingDisabled ? 'Drawing mode toggles correctly' : 'Drawing mode toggle failed');
+            
+            // Test 7: Class validation
+            const validClass = drawingTools.validateClassName('Car');
+            const invalidClass = !drawingTools.validateClassName('InvalidClass');
+            addResult('Class Validation', validClass && invalidClass, 
+                     validClass && invalidClass ? 'Class validation works correctly' : 'Class validation failed');
+            
+            // Test 8: State validation
+            const validState = drawingTools.validateStateName('Verified');
+            const invalidState = !drawingTools.validateStateName('InvalidState');
+            addResult('State Validation', validState && invalidState, 
+                     validState && invalidState ? 'State validation works correctly' : 'State validation failed');
+            
+            // Cleanup
+            drawingTools.destroy();
+            addResult('Cleanup', true, 'DrawingTools destroyed successfully');
+            
+        } catch (error) {
+            addResult('DrawingTools Testing', false, `Error during testing: ${error.message}`);
+        }
+        
+        console.log('Drawing Tools test completed');
+    </script>
+</body>
+</html>

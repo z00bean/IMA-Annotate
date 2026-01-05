@@ -5,6 +5,7 @@
 
 import { CONFIG, getClassColor, getStateColor } from '../config.js';
 import { annotationManager } from './annotation-manager.js';
+import { roiManager } from './roi-manager.js';
 
 /**
  * DrawingTools Class
@@ -21,6 +22,7 @@ export class DrawingTools {
         this.isResizing = false;
         this.isMoving = false;
         this.drawingMode = false;
+        this.roiMode = false;
         
         // Current operation state
         this.startPoint = null;
@@ -31,6 +33,10 @@ export class DrawingTools {
         
         // Drawing preview
         this.previewBox = null;
+        
+        // ROI drawing state
+        this.roiPoints = [];
+        this.isDrawingROI = false;
         
         // Event handlers (bound to preserve 'this' context)
         this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -93,6 +99,33 @@ export class DrawingTools {
     }
 
     /**
+     * Enable ROI drawing mode
+     */
+    enableROIMode() {
+        this.roiMode = true;
+        this.drawingMode = false;
+        this.canvas.style.cursor = 'crosshair';
+        
+        // Cancel any ongoing operations
+        this.cancelCurrentOperation();
+        
+        console.log('ROI drawing mode enabled');
+    }
+
+    /**
+     * Disable ROI drawing mode
+     */
+    disableROIMode() {
+        this.roiMode = false;
+        this.canvas.style.cursor = 'default';
+        
+        // Cancel any ongoing ROI drawing
+        this.cancelROIDrawing();
+        
+        console.log('ROI drawing mode disabled');
+    }
+
+    /**
      * Handle mouse down events
      */
     handleMouseDown(event) {
@@ -107,6 +140,8 @@ export class DrawingTools {
         
         if (this.drawingMode) {
             this.startDrawing(canvasCoords.x, canvasCoords.y);
+        } else if (this.roiMode) {
+            this.handleROIClick(canvasCoords.x, canvasCoords.y);
         } else {
             this.handleSelectionInteraction(canvasCoords.x, canvasCoords.y);
         }
@@ -122,6 +157,8 @@ export class DrawingTools {
         
         if (this.isDrawing) {
             this.updateDrawing(canvasCoords.x, canvasCoords.y);
+        } else if (this.isDrawingROI) {
+            this.updateROIPreview(canvasCoords.x, canvasCoords.y);
         } else if (this.isResizing) {
             this.updateResize(canvasCoords.x, canvasCoords.y);
         } else if (this.isMoving) {
@@ -199,6 +236,94 @@ export class DrawingTools {
             this.showClassAssignmentUI(annotation.id);
         }
     }
+
+    /**
+     * Handle context menu (right-click) events
+     */
+    handleContextMenu(event) {
+        event.preventDefault();
+        
+        const canvasCoords = this.canvasRenderer.getCanvasCoordinates(event.clientX, event.clientY);
+        const annotation = this.canvasRenderer.getAnnotationAtPoint(canvasCoords.x, canvasCoords.y);
+        
+        if (annotation) {
+            this.showContextMenu(event.clientX, event.clientY, annotation);
+        } else {
+            this.hideContextMenu();
+        }
+    }
+
+    /**
+     * Show context menu for annotation
+     */
+    showContextMenu(x, y, annotation) {
+        // Remove existing context menu
+        this.hideContextMenu();
+        
+        const contextMenuHTML = `
+            <div id="annotation-context-menu" class="context-menu" style="position: fixed; left: ${x}px; top: ${y}px; z-index: 1050;">
+                <div class="dropdown-menu show">
+                    <h6 class="dropdown-header">${annotation.className} (${annotation.state})</h6>
+                    <button class="dropdown-item" type="button" data-action="edit">
+                        <i class="bi bi-pencil"></i> Edit Annotation
+                    </button>
+                    <div class="dropdown-divider"></div>
+                    <h6 class="dropdown-header">Change State</h6>
+                    <button class="dropdown-item" type="button" data-action="verify">
+                        <i class="bi bi-check-circle"></i> Verify
+                    </button>
+                    <button class="dropdown-item" type="button" data-action="reject">
+                        <i class="bi bi-x-circle"></i> Reject
+                    </button>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item text-danger" type="button" data-action="delete">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', contextMenuHTML);
+        
+        const contextMenu = document.getElementById('annotation-context-menu');
+        
+        // Add event listeners
+        contextMenu.addEventListener('click', (e) => {
+            const action = e.target.closest('[data-action]')?.dataset.action;
+            
+            switch (action) {
+                case 'edit':
+                    this.showClassAssignmentUI(annotation.id);
+                    break;
+                case 'verify':
+                    this.setAnnotationState(annotation.id, 'Verified');
+                    break;
+                case 'reject':
+                    this.setAnnotationState(annotation.id, 'Rejected');
+                    break;
+                case 'delete':
+                    if (confirm('Are you sure you want to delete this annotation?')) {
+                        annotationManager.deleteAnnotation(annotation.id);
+                    }
+                    break;
+            }
+            
+            this.hideContextMenu();
+        });
+        
+        // Hide context menu when clicking elsewhere
+        document.addEventListener('click', this.hideContextMenu.bind(this), { once: true });
+    }
+
+    /**
+     * Hide context menu
+     */
+    hideContextMenu() {
+        const contextMenu = document.getElementById('annotation-context-menu');
+        if (contextMenu) {
+            contextMenu.remove();
+        }
+    }
     handleKeyDown(event) {
         // Only handle keys when canvas has focus or annotation is selected
         if (document.activeElement !== this.canvas && !this.selectedAnnotation) {
@@ -214,6 +339,44 @@ export class DrawingTools {
             case CONFIG.KEYBOARD_SHORTCUTS.ESCAPE:
                 event.preventDefault();
                 this.cancelCurrentOperation();
+                break;
+                
+            // Quick state change shortcuts
+            case 'KeyV':
+                if (event.ctrlKey && this.selectedAnnotation) {
+                    event.preventDefault();
+                    this.setAnnotationState(this.selectedAnnotation.id, 'Verified');
+                }
+                break;
+                
+            case 'KeyR':
+                if (event.ctrlKey && this.selectedAnnotation) {
+                    event.preventDefault();
+                    this.setAnnotationState(this.selectedAnnotation.id, 'Rejected');
+                }
+                break;
+                
+            case 'KeyM':
+                if (event.ctrlKey && this.selectedAnnotation) {
+                    event.preventDefault();
+                    this.setAnnotationState(this.selectedAnnotation.id, 'Modified');
+                }
+                break;
+                
+            case 'KeyE':
+                if (event.ctrlKey && this.selectedAnnotation) {
+                    event.preventDefault();
+                    this.showClassAssignmentUI(this.selectedAnnotation.id);
+                }
+                break;
+                
+            case CONFIG.KEYBOARD_SHORTCUTS.ROI_MODE:
+                event.preventDefault();
+                if (this.roiMode) {
+                    this.disableROIMode();
+                } else {
+                    this.enableROIMode();
+                }
                 break;
         }
     }
@@ -320,6 +483,136 @@ export class DrawingTools {
         
         // Clean up drawing state
         this.cancelCurrentOperation();
+    }
+
+    /**
+     * Handle ROI click events for polygon drawing
+     */
+    handleROIClick(x, y) {
+        if (!this.roiMode) return;
+
+        // Convert to image coordinates
+        const imageCoords = this.canvasRenderer.canvasToImageCoordinates(x, y);
+        
+        if (!this.isDrawingROI) {
+            // Start new ROI
+            this.startROIDrawing(imageCoords);
+        } else {
+            // Add point to current ROI
+            this.addROIPoint(imageCoords);
+        }
+    }
+
+    /**
+     * Start drawing a new ROI
+     */
+    startROIDrawing(imageCoords) {
+        this.isDrawingROI = true;
+        this.roiPoints = [{ x: imageCoords.x, y: imageCoords.y }];
+        
+        console.log(`Started ROI drawing at (${imageCoords.x.toFixed(1)}, ${imageCoords.y.toFixed(1)})`);
+        
+        // Redraw with preview
+        this.redrawWithROIPreview();
+    }
+
+    /**
+     * Add a point to the current ROI
+     */
+    addROIPoint(imageCoords) {
+        if (!this.isDrawingROI) return;
+
+        // Check if clicking near the first point to close the polygon
+        const firstPoint = this.roiPoints[0];
+        const distance = Math.sqrt(
+            Math.pow(imageCoords.x - firstPoint.x, 2) + 
+            Math.pow(imageCoords.y - firstPoint.y, 2)
+        );
+
+        if (this.roiPoints.length >= CONFIG.ROI.MIN_POINTS && distance < CONFIG.ROI.SELECTION_TOLERANCE) {
+            // Close the polygon
+            this.finishROIDrawing();
+        } else {
+            // Add new point
+            this.roiPoints.push({ x: imageCoords.x, y: imageCoords.y });
+            console.log(`Added ROI point ${this.roiPoints.length}: (${imageCoords.x.toFixed(1)}, ${imageCoords.y.toFixed(1)})`);
+            
+            // Redraw with preview
+            this.redrawWithROIPreview();
+        }
+    }
+
+    /**
+     * Update ROI preview during mouse movement
+     */
+    updateROIPreview(x, y) {
+        if (!this.isDrawingROI) return;
+
+        // Store current mouse position for preview
+        const imageCoords = this.canvasRenderer.canvasToImageCoordinates(x, y);
+        this.currentROIPoint = imageCoords;
+        
+        // Redraw with preview
+        this.redrawWithROIPreview();
+    }
+
+    /**
+     * Finish ROI drawing and create the ROI
+     */
+    finishROIDrawing() {
+        if (!this.isDrawingROI || this.roiPoints.length < CONFIG.ROI.MIN_POINTS) {
+            console.log('Cannot finish ROI: insufficient points');
+            this.cancelROIDrawing();
+            return;
+        }
+
+        // Get current image ID (assuming we have access to it)
+        const imageInfo = this.canvasRenderer.getImageInfo();
+        const imageId = imageInfo ? 'current_image' : 'unknown'; // This should be improved to get actual image ID
+
+        // Create ROI through ROI manager
+        const roi = roiManager.createROI(this.roiPoints, imageId);
+        
+        if (roi) {
+            console.log(`Created ROI with ${this.roiPoints.length} points`);
+            
+            // Set ROI in canvas renderer
+            this.canvasRenderer.setROI(roi);
+        } else {
+            console.error('Failed to create ROI');
+        }
+
+        // Clean up ROI drawing state
+        this.cancelROIDrawing();
+    }
+
+    /**
+     * Cancel ROI drawing
+     */
+    cancelROIDrawing() {
+        this.isDrawingROI = false;
+        this.roiPoints = [];
+        this.currentROIPoint = null;
+        
+        // Redraw canvas to remove preview
+        this.canvasRenderer.redraw();
+        
+        console.log('ROI drawing canceled');
+    }
+
+    /**
+     * Clear current ROI
+     */
+    clearROI() {
+        const success = roiManager.clearROI();
+        
+        if (success) {
+            // Clear ROI from canvas renderer
+            this.canvasRenderer.setROI(null);
+            console.log('ROI cleared');
+        }
+        
+        return success;
     }
 
     /**
@@ -545,6 +838,11 @@ export class DrawingTools {
         this.resizeHandle = null;
         this.moveOffset = null;
         
+        // Also cancel ROI drawing if active
+        if (this.isDrawingROI) {
+            this.cancelROIDrawing();
+        }
+        
         // Redraw canvas to remove preview
         this.canvasRenderer.redraw();
         
@@ -556,6 +854,11 @@ export class DrawingTools {
      */
     updateCursor(x, y) {
         if (this.drawingMode) {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+        }
+        
+        if (this.roiMode) {
             this.canvas.style.cursor = 'crosshair';
             return;
         }
@@ -933,6 +1236,84 @@ export class DrawingTools {
     }
 
     /**
+     * Redraw canvas with ROI preview
+     */
+    redrawWithROIPreview() {
+        // Redraw the base canvas
+        this.canvasRenderer.redraw();
+        
+        // Draw ROI preview if drawing
+        if (this.isDrawingROI && this.roiPoints.length > 0) {
+            const ctx = this.canvasRenderer.getContext();
+            
+            ctx.save();
+            
+            // Convert points to canvas coordinates
+            const canvasPoints = this.roiPoints.map(point => 
+                this.canvasRenderer.imageToCanvasCoordinates(point.x, point.y)
+            );
+            
+            // Draw lines between points
+            ctx.strokeStyle = CONFIG.ROI.STROKE_COLOR;
+            ctx.lineWidth = CONFIG.ROI.LINE_WIDTH;
+            ctx.setLineDash([5, 5]);
+            
+            if (canvasPoints.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+                
+                for (let i = 1; i < canvasPoints.length; i++) {
+                    ctx.lineTo(canvasPoints[i].x, canvasPoints[i].y);
+                }
+                
+                ctx.stroke();
+            }
+            
+            // Draw line to current mouse position if available
+            if (this.currentROIPoint && canvasPoints.length > 0) {
+                const currentCanvas = this.canvasRenderer.imageToCanvasCoordinates(
+                    this.currentROIPoint.x, 
+                    this.currentROIPoint.y
+                );
+                
+                ctx.beginPath();
+                ctx.moveTo(canvasPoints[canvasPoints.length - 1].x, canvasPoints[canvasPoints.length - 1].y);
+                ctx.lineTo(currentCanvas.x, currentCanvas.y);
+                ctx.stroke();
+                
+                // Draw line to first point if we have enough points (to show potential closure)
+                if (canvasPoints.length >= CONFIG.ROI.MIN_POINTS) {
+                    ctx.setLineDash([2, 2]);
+                    ctx.strokeStyle = CONFIG.ROI.STROKE_COLOR + '80'; // Semi-transparent
+                    ctx.beginPath();
+                    ctx.moveTo(currentCanvas.x, currentCanvas.y);
+                    ctx.lineTo(canvasPoints[0].x, canvasPoints[0].y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw points
+            ctx.fillStyle = CONFIG.ROI.STROKE_COLOR;
+            ctx.setLineDash([]);
+            canvasPoints.forEach((point, index) => {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, CONFIG.ROI.POINT_RADIUS, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Highlight first point if we have enough points for closure
+                if (index === 0 && canvasPoints.length >= CONFIG.ROI.MIN_POINTS) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.strokeStyle = CONFIG.ROI.STROKE_COLOR;
+                }
+            });
+            
+            ctx.restore();
+        }
+    }
+
+    /**
      * Enable resize mode for specific annotation
      */
     enableResizeMode(annotationId) {
@@ -980,10 +1361,13 @@ export class DrawingTools {
     getDrawingState() {
         return {
             drawingMode: this.drawingMode,
+            roiMode: this.roiMode,
             isDrawing: this.isDrawing,
+            isDrawingROI: this.isDrawingROI,
             isResizing: this.isResizing,
             isMoving: this.isMoving,
-            selectedAnnotation: this.selectedAnnotation?.id || null
+            selectedAnnotation: this.selectedAnnotation?.id || null,
+            roiPointCount: this.roiPoints.length
         };
     }
 
@@ -996,12 +1380,17 @@ export class DrawingTools {
         this.canvas.removeEventListener('mousemove', this.handleMouseMove);
         this.canvas.removeEventListener('mouseup', this.handleMouseUp);
         this.canvas.removeEventListener('mouseleave', this.handleMouseUp);
+        this.canvas.removeEventListener('dblclick', this.handleDoubleClick);
+        this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
         
         this.canvas.removeEventListener('touchstart', this.handleTouchStart);
         this.canvas.removeEventListener('touchmove', this.handleTouchMove);
         this.canvas.removeEventListener('touchend', this.handleTouchEnd);
         
         document.removeEventListener('keydown', this.handleKeyDown);
+        
+        // Hide context menu if open
+        this.hideContextMenu();
         
         // Clear state
         this.cancelCurrentOperation();

@@ -5,6 +5,9 @@
 
 import { CONFIG, getClassColor, getStateColor } from '../config.js';
 
+// We'll get roiManager reference from the global scope or pass it in
+let roiManagerRef = null;
+
 /**
  * CanvasRenderer Class
  * Responsible for rendering images, annotations, and interactive elements on HTML5 canvas
@@ -21,6 +24,9 @@ export class CanvasRenderer {
         this.annotations = [];
         this.selectedAnnotation = null;
         this.roi = null;
+        
+        // ROI manager reference (will be set externally)
+        this.roiManager = null;
         
         // Canvas properties
         this.devicePixelRatio = window.devicePixelRatio || 1;
@@ -433,7 +439,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * Draw all annotations on the canvas
+     * Draw all annotations on the canvas with ROI filtering support
      */
     drawAnnotations(annotations) {
         if (!annotations || annotations.length === 0) {
@@ -442,40 +448,54 @@ export class CanvasRenderer {
 
         console.log(`Drawing ${annotations.length} annotations`);
 
+        // Check ROI filtering state
+        const isROIFilteringActive = this.roiManager ? this.roiManager.isROIFilteringActive() : false;
+        
         annotations.forEach(annotation => {
-            this.drawAnnotation(annotation);
+            // Check if annotation should be drawn based on ROI filtering
+            let isInROI = true;
+            
+            if (isROIFilteringActive && this.roiManager) {
+                isInROI = this.roiManager.isBoundingBoxInROI(annotation.bbox);
+            }
+            
+            this.drawAnnotation(annotation, { isInROI, isROIFilteringActive });
         });
     }
 
     /**
      * Draw a single annotation (bounding box, label, and segmentation mask if available)
      */
-    drawAnnotation(annotation) {
+    drawAnnotation(annotation, roiInfo = {}) {
         if (!annotation || !this.scaledDimensions) {
             return;
         }
 
+        // Extract ROI information
+        const { isInROI = true, isROIFilteringActive = false } = roiInfo;
+
         // Draw segmentation mask first (if available) so it appears behind bounding box
         if (annotation.segmentationMask) {
-            this.drawSegmentationMask(annotation);
+            this.drawSegmentationMask(annotation, roiInfo);
         }
 
         // Draw bounding box
-        this.drawBoundingBox(annotation);
+        this.drawBoundingBox(annotation, roiInfo);
 
         // Draw class label and confidence score
-        this.drawAnnotationLabel(annotation);
+        this.drawAnnotationLabel(annotation, roiInfo);
     }
 
     /**
-     * Draw bounding box with state-specific styling
+     * Draw bounding box with state-specific styling and ROI filtering support
      */
-    drawBoundingBox(annotation) {
+    drawBoundingBox(annotation, roiInfo = {}) {
         if (!annotation.bbox || !this.scaledDimensions) {
             return;
         }
 
         const { bbox, className, state } = annotation;
+        const { isInROI = true, isROIFilteringActive = false } = roiInfo;
         
         // Convert image coordinates to canvas coordinates
         const topLeft = this.imageToCanvasCoordinates(bbox.x, bbox.y);
@@ -491,20 +511,41 @@ export class CanvasRenderer {
         const classColor = getClassColor(className);
         const stateColor = getStateColor(state);
         
-        // Use state color for border, class color for fill (if needed)
-        const strokeColor = stateColor;
-        const fillColor = classColor;
+        // Modify colors based on ROI filtering
+        let strokeColor = stateColor;
+        let fillColor = classColor;
+        let opacity = 1.0;
+        
+        if (isROIFilteringActive) {
+            if (isInROI) {
+                // Annotations inside ROI: normal or enhanced visibility
+                opacity = 1.0;
+            } else {
+                // Annotations outside ROI: reduced visibility
+                opacity = 0.3;
+                strokeColor = this.adjustColorOpacity(stateColor, 0.3);
+                fillColor = this.adjustColorOpacity(classColor, 0.3);
+            }
+        }
 
         // Save current context state
         this.ctx.save();
 
-        // Set line style based on verification state
+        // Set line style based on verification state and ROI
         this.ctx.strokeStyle = strokeColor;
         this.ctx.lineWidth = this.getLineWidthForState(state);
+        this.ctx.globalAlpha = opacity;
         
         // Set dash pattern for different states
         const dashPattern = this.getDashPatternForState(state);
-        this.ctx.setLineDash(dashPattern);
+        
+        // Modify dash pattern for ROI filtering
+        if (isROIFilteringActive && !isInROI) {
+            // Use longer dashes for annotations outside ROI
+            this.ctx.setLineDash([10, 10]);
+        } else {
+            this.ctx.setLineDash(dashPattern);
+        }
 
         // Draw bounding box rectangle
         this.ctx.strokeRect(topLeft.x, topLeft.y, canvasWidth, canvasHeight);
@@ -513,6 +554,11 @@ export class CanvasRenderer {
         if (annotation.selected || state === 'Modified') {
             this.ctx.fillStyle = fillColor + '20'; // 20 = ~12% opacity
             this.ctx.fillRect(topLeft.x, topLeft.y, canvasWidth, canvasHeight);
+        }
+
+        // Draw ROI indicator for annotations inside ROI when filtering is active
+        if (isROIFilteringActive && isInROI) {
+            this.drawROIIndicator(topLeft.x, topLeft.y, canvasWidth, canvasHeight);
         }
 
         // Draw selection handles if annotation is selected
@@ -525,22 +571,29 @@ export class CanvasRenderer {
     }
 
     /**
-     * Draw segmentation mask overlay
+     * Draw segmentation mask overlay with ROI filtering support
      */
-    drawSegmentationMask(annotation) {
+    drawSegmentationMask(annotation, roiInfo = {}) {
         if (!annotation.segmentationMask || !this.scaledDimensions) {
             return;
         }
 
         const { className } = annotation;
+        const { isInROI = true, isROIFilteringActive = false } = roiInfo;
         const classColor = getClassColor(className);
+        
+        // Calculate opacity based on ROI filtering
+        let opacity = 0.25; // Default 25% opacity
+        if (isROIFilteringActive && !isInROI) {
+            opacity = 0.1; // Reduced opacity for annotations outside ROI
+        }
         
         // Save current context state
         this.ctx.save();
 
         try {
             // Set fill style with transparency
-            this.ctx.fillStyle = classColor + '40'; // 40 = ~25% opacity
+            this.ctx.fillStyle = classColor + Math.floor(opacity * 255).toString(16).padStart(2, '0');
             
             // Convert mask coordinates to canvas coordinates and draw
             const mask = annotation.segmentationMask;
@@ -562,8 +615,9 @@ export class CanvasRenderer {
                 this.ctx.closePath();
                 this.ctx.fill();
                 
-                // Also draw outline
+                // Also draw outline with adjusted opacity
                 this.ctx.strokeStyle = classColor;
+                this.ctx.globalAlpha = isROIFilteringActive && !isInROI ? 0.3 : 1.0;
                 this.ctx.lineWidth = 1;
                 this.ctx.setLineDash([]);
                 this.ctx.stroke();
@@ -578,14 +632,15 @@ export class CanvasRenderer {
     }
 
     /**
-     * Draw class label and confidence score
+     * Draw class label and confidence score with ROI filtering support
      */
-    drawAnnotationLabel(annotation) {
+    drawAnnotationLabel(annotation, roiInfo = {}) {
         if (!annotation.bbox || !this.scaledDimensions) {
             return;
         }
 
         const { bbox, className, confidence, state } = annotation;
+        const { isInROI = true, isROIFilteringActive = false } = roiInfo;
         
         // Convert image coordinates to canvas coordinates
         const topLeft = this.imageToCanvasCoordinates(bbox.x, bbox.y);
@@ -628,7 +683,17 @@ export class CanvasRenderer {
         const classColor = getClassColor(className);
         const stateColor = getStateColor(state);
 
+        // Adjust colors and opacity based on ROI filtering
+        let backgroundOpacity = 1.0;
+        let textOpacity = 1.0;
+        
+        if (isROIFilteringActive && !isInROI) {
+            backgroundOpacity = 0.3;
+            textOpacity = 0.6;
+        }
+
         // Draw label background
+        this.ctx.globalAlpha = backgroundOpacity;
         this.ctx.fillStyle = stateColor;
         this.ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
 
@@ -639,6 +704,7 @@ export class CanvasRenderer {
         this.ctx.strokeRect(labelX, labelY, labelWidth, labelHeight);
 
         // Draw label text
+        this.ctx.globalAlpha = textOpacity;
         this.ctx.fillStyle = this.getContrastColor(stateColor);
         this.ctx.textAlign = 'left';
         this.ctx.textBaseline = 'top';
@@ -723,6 +789,53 @@ export class CanvasRenderer {
     }
 
     /**
+     * Draw ROI indicator for annotations inside ROI
+     */
+    drawROIIndicator(x, y, width, height) {
+        // Save current context state
+        this.ctx.save();
+
+        // Draw a small ROI indicator in the top-right corner
+        const indicatorSize = 8;
+        const indicatorX = x + width - indicatorSize - 2;
+        const indicatorY = y + 2;
+
+        // Draw indicator background
+        this.ctx.fillStyle = CONFIG.ROI.STROKE_COLOR;
+        this.ctx.fillRect(indicatorX, indicatorY, indicatorSize, indicatorSize);
+
+        // Draw indicator border
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([]);
+        this.ctx.strokeRect(indicatorX, indicatorY, indicatorSize, indicatorSize);
+
+        // Draw checkmark or dot inside
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.beginPath();
+        this.ctx.arc(indicatorX + indicatorSize/2, indicatorY + indicatorSize/2, 2, 0, 2 * Math.PI);
+        this.ctx.fill();
+
+        // Restore context state
+        this.ctx.restore();
+    }
+
+    /**
+     * Adjust color opacity for ROI filtering
+     */
+    adjustColorOpacity(color, opacity) {
+        // Convert hex color to rgba with specified opacity
+        if (color.startsWith('#')) {
+            const hex = color.slice(1);
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        }
+        return color; // Return original if not hex
+    }
+
+    /**
      * Get contrasting text color for background
      */
     getContrastColor(backgroundColor) {
@@ -739,19 +852,89 @@ export class CanvasRenderer {
     }
 
     /**
-     * Set ROI for rendering (placeholder for future tasks)
+     * Set ROI manager reference
      */
-    setROI(roi) {
-        this.roi = roi;
-        console.log('ROI set for rendering (placeholder)');
+    setROIManager(roiManager) {
+        this.roiManager = roiManager;
+        console.log('ROI manager reference set in canvas renderer');
     }
 
     /**
-     * Draw ROI (placeholder for future tasks)
+     * Set ROI for rendering
+     */
+    setROI(roi) {
+        this.roi = roi;
+        console.log('ROI set for rendering:', roi ? `${roi.polygon.length} points` : 'null');
+        
+        // Trigger redraw if we have a current image
+        if (this.currentImage) {
+            this.redraw();
+        }
+    }
+
+    /**
+     * Draw ROI (Region of Interest)
      */
     drawROI(roi) {
-        console.log('Drawing ROI (placeholder)');
-        // Implementation will be added in future tasks
+        if (!roi || !roi.polygon || roi.polygon.length < 3) {
+            return;
+        }
+
+        console.log(`Drawing ROI with ${roi.polygon.length} points`);
+
+        // Save current context state
+        this.ctx.save();
+
+        try {
+            // Convert ROI points to canvas coordinates
+            const canvasPoints = roi.polygon.map(point => 
+                this.imageToCanvasCoordinates(point.x, point.y)
+            );
+
+            // Draw filled polygon
+            this.ctx.beginPath();
+            this.ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+            
+            for (let i = 1; i < canvasPoints.length; i++) {
+                this.ctx.lineTo(canvasPoints[i].x, canvasPoints[i].y);
+            }
+            
+            this.ctx.closePath();
+
+            // Fill with semi-transparent color
+            this.ctx.fillStyle = CONFIG.ROI.FILL_COLOR + Math.floor(CONFIG.ROI.FILL_OPACITY * 255).toString(16).padStart(2, '0');
+            this.ctx.fill();
+
+            // Draw outline
+            this.ctx.strokeStyle = CONFIG.ROI.STROKE_COLOR;
+            this.ctx.lineWidth = CONFIG.ROI.LINE_WIDTH;
+            this.ctx.setLineDash([]);
+            this.ctx.stroke();
+
+            // Draw points
+            this.ctx.fillStyle = CONFIG.ROI.STROKE_COLOR;
+            canvasPoints.forEach((point, index) => {
+                this.ctx.beginPath();
+                this.ctx.arc(point.x, point.y, CONFIG.ROI.POINT_RADIUS, 0, 2 * Math.PI);
+                this.ctx.fill();
+                
+                // Draw point index for debugging (optional)
+                if (CONFIG.DEBUG && CONFIG.DEBUG.SHOW_ROI_INDICES) {
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.font = '12px Arial';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(index.toString(), point.x, point.y);
+                    this.ctx.fillStyle = CONFIG.ROI.STROKE_COLOR;
+                }
+            });
+
+        } catch (error) {
+            console.warn('Error drawing ROI:', error);
+        }
+
+        // Restore context state
+        this.ctx.restore();
     }
 
     /**

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Export Functionality</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .success { color: green; }
+        .error { color: red; }
+        button { margin: 5px; padding: 10px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Export Functionality Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="test-results"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Manual Tests</h2>
+        <button onclick="testYOLOExport()">Test YOLO Export</button>
+        <button onclick="testPascalVOCExport()">Test Pascal VOC Export</button>
+        <button onclick="testCOCOExport()">Test COCO Export</button>
+        <button onclick="testJSONExport()">Test JSON Export</button>
+        <button onclick="testHistoryExport()">Test History Export</button>
+        <button onclick="testManualSave()">Test Manual Save</button>
+        <button onclick="testLocalStorage()">Test Local Storage</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Export Output</h2>
+        <pre id="export-output"></pre>
+    </div>
+
+    <script type="module">
+        import { CONFIG } from './config.js';
+        import { AnnotationManager } from './js/annotation-manager.js';
+
+        // Create test annotation manager
+        const testAnnotationManager = new AnnotationManager();
+        
+        // Create sample annotations for testing
+        const sampleAnnotations = [
+            {
+                id: 'test_ann_1',
+                imageId: 'test_image_1',
+                bbox: { x: 100, y: 150, width: 200, height: 100 },
+                className: 'Car',
+                confidence: 0.95,
+                state: 'Verified',
+                createdAt: new Date('2024-01-01T10:00:00Z'),
+                modifiedAt: new Date('2024-01-01T10:05:00Z'),
+                segmentationMask: null,
+                selected: false,
+                metadata: {}
+            },
+            {
+                id: 'test_ann_2',
+                imageId: 'test_image_1',
+                bbox: { x: 300, y: 200, width: 150, height: 80 },
+                className: 'Person',
+                confidence: 0.87,
+                state: 'Modified',
+                createdAt: new Date('2024-01-01T10:01:00Z'),
+                modifiedAt: new Date('2024-01-01T10:06:00Z'),
+                segmentationMask: null,
+                selected: false,
+                metadata: {}
+            }
+        ];
+
+        // Set up test data
+        testAnnotationManager.annotations.set('test_image_1', sampleAnnotations);
+        testAnnotationManager.currentImageId = 'test_image_1';
+
+        // Add some history entries
+        testAnnotationManager.addToHistory('create', sampleAnnotations[0]);
+        testAnnotationManager.addToHistory('create', sampleAnnotations[1]);
+        testAnnotationManager.addToHistory('update', sampleAnnotations[0], { ...sampleAnnotations[0], state: 'Suggested' });
+
+        // Test functions
+        window.testYOLOExport = function() {
+            const imageMetadata = { width: 1920, height: 1080, filename: 'test_image.jpg' };
+            const result = testAnnotationManager.exportAnnotations('yolo', 'test_image_1', imageMetadata);
+            displayResult('YOLO Export', result);
+        };
+
+        window.testPascalVOCExport = function() {
+            const imageMetadata = { width: 1920, height: 1080, filename: 'test_image.jpg' };
+            const result = testAnnotationManager.exportAnnotations('pascal_voc', 'test_image_1', imageMetadata);
+            displayResult('Pascal VOC Export', result);
+        };
+
+        window.testCOCOExport = function() {
+            const imageMetadata = { width: 1920, height: 1080, filename: 'test_image.jpg', id: 1 };
+            const result = testAnnotationManager.exportAnnotations('coco', 'test_image_1', imageMetadata);
+            displayResult('COCO Export', result);
+        };
+
+        window.testJSONExport = function() {
+            const imageMetadata = { width: 1920, height: 1080, filename: 'test_image.jpg' };
+            const result = testAnnotationManager.exportAnnotations('json', 'test_image_1', imageMetadata);
+            displayResult('JSON Export', result);
+        };
+
+        window.testHistoryExport = function() {
+            const result = testAnnotationManager.exportHistory('json');
+            displayResult('History Export', result);
+        };
+
+        window.testManualSave = async function() {
+            const result = await testAnnotationManager.manualSave();
+            displayResult('Manual Save', result);
+        };
+
+        window.testLocalStorage = async function() {
+            // Test save to local storage
+            const saveResult = await testAnnotationManager.saveToLocalStorage();
+            
+            // Test load from local storage
+            const loadResult = await testAnnotationManager.loadFromLocalStorage();
+            
+            displayResult('Local Storage Save', saveResult);
+            displayResult('Local Storage Load', loadResult);
+        };
+
+        function displayResult(testName, result) {
+            const resultsDiv = document.getElementById('test-results');
+            const outputDiv = document.getElementById('export-output');
+            
+            const resultClass = result.success ? 'success' : 'error';
+            const resultText = result.success ? 'PASS' : 'FAIL';
+            
+            resultsDiv.innerHTML += `<div class="${resultClass}">${testName}: ${resultText}</div>`;
+            
+            if (result.success && result.data) {
+                outputDiv.innerHTML = `<strong>${testName} Output:</strong>\n${JSON.stringify(result.data, null, 2)}`;
+            } else if (!result.success) {
+                outputDiv.innerHTML = `<strong>${testName} Error:</strong>\n${result.error}`;
+            }
+        }
+
+        // Run basic tests on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<div class="success">Test environment initialized successfully</div>';
+            
+            // Test that annotation manager is working
+            const counts = testAnnotationManager.getAnnotationCounts();
+            resultsDiv.innerHTML += `<div class="success">Annotation counts: ${JSON.stringify(counts)}</div>`;
+            
+            // Test history stats
+            const historyStats = testAnnotationManager.getHistoryStats();
+            resultsDiv.innerHTML += `<div class="success">History entries: ${historyStats.totalEntries}</div>`;
+        });
+    </script>
+</body>
+</html>

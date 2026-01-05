@@ -10,6 +10,7 @@ import { imageManager } from './image-manager.js';
 import { initializeCanvasRenderer } from './canvas-renderer.js';
 import { annotationManager } from './annotation-manager.js';
 import { initializeDrawingTools } from './drawing-tools.js';
+import { roiManager } from './roi-manager.js';
 
 /**
  * Main Application Class
@@ -136,9 +137,18 @@ class App {
         this.saveBtn?.addEventListener('click', () => this.saveAnnotations());
         this.exportBtn?.addEventListener('click', () => this.exportAnnotations());
         
+        // Add manual save button if it exists
+        const manualSaveBtn = document.getElementById('manual-save-btn');
+        if (manualSaveBtn) {
+            manualSaveBtn.addEventListener('click', () => this.manualSave());
+        }
+        
         // ROI events
         this.roiToggle?.addEventListener('change', () => this.toggleROIFiltering());
         this.clearRoiBtn?.addEventListener('click', () => this.clearROI());
+        
+        // Class selector events
+        this.classSelector?.addEventListener('change', () => this.onClassSelectorChange());
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (event) => this.handleKeyboardShortcuts(event));
@@ -166,6 +176,9 @@ class App {
             return;
         }
         
+        // Set ROI manager reference in canvas renderer
+        this.canvasRenderer.setROIManager(roiManager);
+        
         // Initialize drawing tools
         this.drawingTools = initializeDrawingTools(this.canvas, this.canvasRenderer);
         
@@ -185,6 +198,10 @@ class App {
         annotationManager.setOnAnnotationStateChanged((annotation) => this.onAnnotationStateChanged(annotation));
         annotationManager.setOnSaveComplete((result) => this.onSaveComplete(result));
         annotationManager.setOnSaveError((result) => this.onSaveError(result));
+        
+        // Set up ROI manager callbacks
+        roiManager.setOnROIChanged((roi) => this.onROIChanged(roi));
+        roiManager.setOnROIFilteringChanged((active) => this.onROIFilteringChanged(active));
         
         console.log('Canvas initialized with CanvasRenderer and DrawingTools');
     }
@@ -467,30 +484,80 @@ class App {
         if (enabled) {
             this.drawBtn?.classList.add('active');
             this.selectBtn?.classList.remove('active');
+            this.roiBtn?.classList.remove('active');
         } else {
             this.drawBtn?.classList.remove('active');
             this.selectBtn?.classList.add('active');
+            this.roiBtn?.classList.remove('active');
         }
         
         console.log(`Drawing mode ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
-     * Drawing mode methods (placeholders for future implementation)
+     * Handle class selector change
      */
+    onClassSelectorChange() {
+        if (!this.classSelector) return;
+        
+        const selectedClass = this.classSelector.value;
+        
+        // If there's a selected annotation, update its class
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation) {
+            const success = annotationManager.updateAnnotation(selectedAnnotation.id, {
+                className: selectedClass
+            });
+            
+            if (success) {
+                console.log(`Updated annotation ${selectedAnnotation.id} class to ${selectedClass}`);
+            } else {
+                console.error(`Failed to update annotation ${selectedAnnotation.id} class`);
+                // Revert selector to original value
+                this.classSelector.value = selectedAnnotation.className;
+            }
+        }
+    }
+
+    /**
+     * Update class selector to match selected annotation
+     */
+    updateClassSelector(annotation) {
+        if (this.classSelector && annotation) {
+            this.classSelector.value = annotation.className;
+        }
+    }
     toggleROIMode() {
+        if (this.drawingTools) {
+            if (this.drawingTools.roiMode) {
+                this.drawingTools.disableROIMode();
+                this.roiBtn?.classList.remove('active');
+            } else {
+                // Disable other modes first
+                this.setDrawingMode(false);
+                this.drawingTools.enableROIMode();
+                this.roiBtn?.classList.add('active');
+            }
+        }
         console.log('ROI mode toggled');
-        // Will be implemented in future tasks
     }
 
     toggleROIFiltering() {
-        console.log('ROI filtering toggled');
-        // Will be implemented in future tasks
+        const isEnabled = this.roiToggle?.checked || false;
+        roiManager.setROIFiltering(isEnabled);
+        console.log(`ROI filtering ${isEnabled ? 'enabled' : 'disabled'}`);
     }
 
     clearROI() {
-        console.log('ROI cleared');
-        // Will be implemented in future tasks
+        if (this.drawingTools) {
+            const success = this.drawingTools.clearROI();
+            if (success) {
+                // Update UI state
+                this.roiToggle.checked = false;
+                roiManager.setROIFiltering(false);
+            }
+        }
+        console.log('Clear ROI requested');
     }
 
     /**
@@ -523,22 +590,147 @@ class App {
     exportAnnotations() {
         console.log('Export annotations requested');
         
+        // Show export options modal or use default format
+        this.showExportDialog();
+    }
+
+    /**
+     * Show export dialog with format options
+     */
+    showExportDialog() {
+        // Create a simple modal for export options
+        const modalHtml = `
+            <div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="exportModalLabel">Export Annotations</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="exportFormat" class="form-label">Export Format</label>
+                                <select class="form-select" id="exportFormat">
+                                    <option value="json">JSON (Full Data)</option>
+                                    <option value="yolo">YOLO Format</option>
+                                    <option value="pascal_voc">Pascal VOC XML</option>
+                                    <option value="coco">COCO JSON</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="exportScope" class="form-label">Export Scope</label>
+                                <select class="form-select" id="exportScope">
+                                    <option value="current">Current Image Only</option>
+                                    <option value="all">All Images</option>
+                                </select>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="includeHistory">
+                                <label class="form-check-label" for="includeHistory">
+                                    Include annotation history
+                                </label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="confirmExport">Export</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove existing modal if present
+        const existingModal = document.getElementById('exportModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add modal to DOM
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('exportModal'));
+        modal.show();
+
+        // Handle export confirmation
+        document.getElementById('confirmExport').addEventListener('click', () => {
+            const format = document.getElementById('exportFormat').value;
+            const scope = document.getElementById('exportScope').value;
+            const includeHistory = document.getElementById('includeHistory').checked;
+            
+            modal.hide();
+            this.performExport(format, scope, includeHistory);
+        });
+    }
+
+    /**
+     * Perform the actual export
+     */
+    async performExport(format, scope, includeHistory) {
         try {
-            // Default to YOLO format for now
-            const result = annotationManager.exportAnnotations('yolo');
+            this.showLoadingIndicator();
+            
+            let result;
+            
+            if (scope === 'all') {
+                result = annotationManager.exportAllAnnotations(format);
+            } else {
+                // Get current image metadata for proper export
+                const currentImage = imageManager.getCurrentImage();
+                const imageMetadata = currentImage ? {
+                    id: currentImage.data.id,
+                    filename: currentImage.data.filename,
+                    width: currentImage.element.naturalWidth,
+                    height: currentImage.element.naturalHeight
+                } : null;
+                
+                result = annotationManager.exportAnnotations(format, null, imageMetadata);
+            }
             
             if (result.success) {
                 // Create and download file
-                const dataStr = JSON.stringify(result.data, null, 2);
-                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                let dataToDownload = result.data;
+                
+                // For text formats, convert to string
+                if (typeof dataToDownload === 'object' && result.mimeType !== 'application/json') {
+                    if (result.mimeType === 'application/xml') {
+                        dataToDownload = result.data;
+                    } else {
+                        dataToDownload = JSON.stringify(result.data, null, 2);
+                    }
+                } else if (typeof dataToDownload === 'object') {
+                    dataToDownload = JSON.stringify(result.data, null, 2);
+                }
+                
+                // Include history if requested
+                if (includeHistory && format === 'json') {
+                    const historyResult = annotationManager.exportHistory('json');
+                    if (historyResult.success) {
+                        const combinedData = {
+                            annotations: JSON.parse(dataToDownload),
+                            history: JSON.parse(historyResult.data)
+                        };
+                        dataToDownload = JSON.stringify(combinedData, null, 2);
+                    }
+                }
+                
+                const dataBlob = new Blob([dataToDownload], { type: result.mimeType });
                 
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(dataBlob);
-                link.download = `annotations_${Date.now()}.json`;
+                link.download = result.filename;
                 link.click();
                 
-                statusBanner.showSuccess(`Exported ${result.annotationCount} annotations`);
-                console.log(`Exported ${result.annotationCount} annotations in ${result.format} format`);
+                // Clean up
+                URL.revokeObjectURL(link.href);
+                
+                const message = scope === 'all' 
+                    ? `Exported ${result.imageCount || 1} images with ${result.annotationCount} annotations`
+                    : `Exported ${result.annotationCount} annotations`;
+                    
+                statusBanner.showSuccess(message);
+                console.log(`Export completed: ${result.filename}`);
             } else {
                 statusBanner.showError(result.error);
                 console.error('Failed to export annotations:', result.error);
@@ -547,6 +739,35 @@ class App {
         } catch (error) {
             console.error('Error exporting annotations:', error);
             statusBanner.showError('Failed to export annotations. Check console for details.');
+        } finally {
+            this.hideLoadingIndicator();
+        }
+    }
+
+    /**
+     * Manual save functionality
+     */
+    async manualSave() {
+        console.log('Manual save requested');
+        
+        try {
+            this.showLoadingIndicator();
+            
+            const result = await annotationManager.manualSave();
+            
+            if (result.success) {
+                statusBanner.showSuccess(result.message);
+                console.log('Manual save completed:', result);
+            } else {
+                statusBanner.showError(result.message);
+                console.error('Manual save failed:', result.error);
+            }
+            
+        } catch (error) {
+            console.error('Error during manual save:', error);
+            statusBanner.showError('Manual save failed. Check console for details.');
+        } finally {
+            this.hideLoadingIndicator();
         }
     }
 
@@ -578,7 +799,13 @@ class App {
             case CONFIG.KEYBOARD_SHORTCUTS.SAVE:
                 if (event.ctrlKey || event.metaKey) {
                     event.preventDefault();
-                    this.saveAnnotations();
+                    if (event.shiftKey) {
+                        // Ctrl+Shift+S for manual save
+                        this.manualSave();
+                    } else {
+                        // Ctrl+S for regular save
+                        this.saveAnnotations();
+                    }
                 }
                 break;
                 
@@ -719,6 +946,9 @@ class App {
             this.canvasRenderer.highlightAnnotation(annotation.id);
         }
         
+        // Update class selector to match selected annotation
+        this.updateClassSelector(annotation);
+        
         // Update UI to show selected annotation details
         // This could be expanded to show annotation properties in a sidebar
     }
@@ -743,6 +973,46 @@ class App {
     onSaveError(result) {
         console.error(`Save failed: ${result.errorCount} errors`, result.errors);
         statusBanner.showError(result.message);
+    }
+
+    /**
+     * ROI Manager Callback Methods
+     */
+    onROIChanged(roi) {
+        console.log('ROI changed:', roi ? `${roi.polygon.length} points` : 'cleared');
+        
+        // Update canvas renderer with new ROI
+        if (this.canvasRenderer) {
+            this.canvasRenderer.setROI(roi);
+        }
+        
+        // Update UI state
+        if (roi) {
+            // Enable ROI toggle if ROI is created
+            if (this.roiToggle) {
+                this.roiToggle.disabled = false;
+            }
+        } else {
+            // Disable ROI toggle if no ROI
+            if (this.roiToggle) {
+                this.roiToggle.checked = false;
+                this.roiToggle.disabled = true;
+            }
+            roiManager.setROIFiltering(false);
+        }
+    }
+
+    onROIFilteringChanged(active) {
+        console.log(`ROI filtering ${active ? 'activated' : 'deactivated'}`);
+        
+        // Update annotation display based on ROI filtering
+        if (this.canvasRenderer) {
+            // Trigger redraw to apply ROI filtering visual effects
+            this.canvasRenderer.redraw();
+        }
+        
+        // Update annotation counts if filtering affects visibility
+        this.updateAnnotationCounts();
     }
 
     /**

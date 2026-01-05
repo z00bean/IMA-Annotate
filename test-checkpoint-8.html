@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkpoint 8: Drawing Tools and Annotation Manipulation Test</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #test-canvas {
+            border: 2px solid #ccc;
+            display: block;
+            margin: 20px 0;
+            cursor: crosshair;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .test-pass {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .test-info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .test-controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .annotation-info {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1>Checkpoint 8: Drawing Tools and Annotation Manipulation Test</h1>
+        <p class="lead">This test verifies that drawing tools and annotation manipulation functionality is working correctly.</p>
+        
+        <!-- Test Controls -->
+        <div class="test-controls">
+            <h3>Test Controls</h3>
+            <div class="row">
+                <div class="col-md-6">
+                    <button id="start-test" class="btn btn-primary">Start Automated Tests</button>
+                    <button id="clear-canvas" class="btn btn-secondary ms-2">Clear Canvas</button>
+                    <button id="add-sample-annotation" class="btn btn-success ms-2">Add Sample Annotation</button>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="drawing-mode" checked>
+                        <label class="form-check-label" for="drawing-mode">Drawing Mode</label>
+                    </div>
+                    <select id="class-selector" class="form-select mt-2">
+                        <option value="Car">Car</option>
+                        <option value="Truck">Truck</option>
+                        <option value="Bus">Bus</option>
+                        <option value="Person">Person</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div class="row">
+            <div class="col-lg-8">
+                <canvas id="test-canvas" width="800" height="600"></canvas>
+                <div class="annotation-info">
+                    <strong>Manual Testing Instructions:</strong>
+                    <ul>
+                        <li><strong>Drawing:</strong> Click and drag to create bounding boxes</li>
+                        <li><strong>Selection:</strong> Click on annotations to select them</li>
+                        <li><strong>Resizing:</strong> Drag the corner handles of selected annotations</li>
+                        <li><strong>Moving:</strong> Drag selected annotations to move them</li>
+                        <li><strong>Context Menu:</strong> Right-click on annotations for options</li>
+                        <li><strong>Double-click:</strong> Double-click annotations to edit class/state</li>
+                        <li><strong>Keyboard:</strong> Delete key to remove selected annotations</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div id="test-results">
+                    <h3>Test Results</h3>
+                    <div id="results-container"></div>
+                </div>
+                
+                <div class="mt-4">
+                    <h4>Current Annotations</h4>
+                    <div id="annotation-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script type="module">
+        import { CONFIG } from './config.js';
+        import { CanvasRenderer } from './js/canvas-renderer.js';
+        import { DrawingTools } from './js/drawing-tools.js';
+        import { annotationManager } from './js/annotation-manager.js';
+
+        const results = document.getElementById('results-container');
+        const annotationList = document.getElementById('annotation-list');
+        let testCanvas, canvasRenderer, drawingTools;
+        let testResults = [];
+        
+        function addResult(testName, passed, message) {
+            const div = document.createElement('div');
+            div.className = `test-result ${passed ? 'test-pass' : 'test-fail'}`;
+            div.innerHTML = `<strong>${testName}:</strong> ${passed ? 'PASS' : 'FAIL'} - ${message}`;
+            results.appendChild(div);
+            
+            testResults.push({ testName, passed, message });
+            console.log(`${testName}: ${passed ? 'PASS' : 'FAIL'} - ${message}`);
+        }
+        
+        function addInfo(message) {
+            const div = document.createElement('div');
+            div.className = 'test-result test-info';
+            div.innerHTML = `<strong>INFO:</strong> ${message}`;
+            results.appendChild(div);
+        }
+        
+        function updateAnnotationList() {
+            const annotations = annotationManager.getCurrentAnnotations();
+            annotationList.innerHTML = '';
+            
+            if (annotations.length === 0) {
+                annotationList.innerHTML = '<p class="text-muted">No annotations</p>';
+                return;
+            }
+            
+            annotations.forEach((annotation, index) => {
+                const div = document.createElement('div');
+                div.className = 'annotation-info mb-2';
+                div.innerHTML = `
+                    <strong>Annotation ${index + 1}</strong><br>
+                    Class: ${annotation.className}<br>
+                    State: ${annotation.state}<br>
+                    Position: (${annotation.bbox.x}, ${annotation.bbox.y})<br>
+                    Size: ${annotation.bbox.width} × ${annotation.bbox.height}<br>
+                    Selected: ${annotation.selected ? 'Yes' : 'No'}
+                `;
+                annotationList.appendChild(div);
+            });
+        }
+        
+        async function runAutomatedTests() {
+            addInfo('Starting automated tests...');
+            
+            try {
+                // Test 1: Module Imports
+                addResult('Module Import', true, 'All modules imported successfully');
+                
+                // Test 2: Canvas Setup
+                testCanvas = document.getElementById('test-canvas');
+                const canvasExists = testCanvas && testCanvas.getContext;
+                addResult('Canvas Setup', canvasExists, canvasExists ? 'Canvas element found and functional' : 'Canvas element not found');
+                
+                if (!canvasExists) return;
+                
+                // Test 3: CanvasRenderer Initialization
+                try {
+                    canvasRenderer = new CanvasRenderer(testCanvas, testCanvas.parentElement);
+                    const rendererCreated = canvasRenderer instanceof CanvasRenderer;
+                    addResult('CanvasRenderer Init', rendererCreated, rendererCreated ? 'CanvasRenderer created successfully' : 'Failed to create CanvasRenderer');
+                } catch (error) {
+                    addResult('CanvasRenderer Init', false, `Error: ${error.message}`);
+                    return;
+                }
+                
+                // Test 4: DrawingTools Initialization
+                try {
+                    drawingTools = new DrawingTools(testCanvas, canvasRenderer);
+                    const toolsCreated = drawingTools instanceof DrawingTools;
+                    addResult('DrawingTools Init', toolsCreated, toolsCreated ? 'DrawingTools created successfully' : 'Failed to create DrawingTools');
+                } catch (error) {
+                    addResult('DrawingTools Init', false, `Error: ${error.message}`);
+                    return;
+                }
+                
+                // Test 5: Method Existence
+                const requiredMethods = [
+                    'enableDrawMode', 'disableDrawMode', 'handleMouseDown', 'handleMouseMove', 
+                    'handleMouseUp', 'startDrawing', 'updateDrawing', 'finishDrawing',
+                    'selectAnnotation', 'clearSelection', 'deleteSelectedAnnotation',
+                    'validateClassName', 'validateStateName'
+                ];
+                
+                const missingMethods = requiredMethods.filter(method => typeof drawingTools[method] !== 'function');
+                addResult('Method Existence', missingMethods.length === 0, 
+                         missingMethods.length === 0 ? 'All required methods exist' : `Missing methods: ${missingMethods.join(', ')}`);
+                
+                // Test 6: Drawing Mode Toggle
+                drawingTools.enableDrawMode();
+                const drawingEnabled = drawingTools.drawingMode === true;
+                drawingTools.disableDrawMode();
+                const drawingDisabled = drawingTools.drawingMode === false;
+                addResult('Drawing Mode Toggle', drawingEnabled && drawingDisabled, 
+                         drawingEnabled && drawingDisabled ? 'Drawing mode toggles correctly' : 'Drawing mode toggle failed');
+                
+                // Test 7: Class Validation
+                const validClasses = ['Car', 'Truck', 'Bus', 'Person', 'Other'];
+                const classValidationResults = validClasses.map(className => drawingTools.validateClassName(className));
+                const allClassesValid = classValidationResults.every(result => result);
+                const invalidClassResult = drawingTools.validateClassName('InvalidClass');
+                addResult('Class Validation', allClassesValid && !invalidClassResult, 
+                         allClassesValid && !invalidClassResult ? 'Class validation works correctly' : 'Class validation failed');
+                
+                // Test 8: State Validation
+                const validStates = ['Suggested', 'Modified', 'Verified', 'Rejected'];
+                const stateValidationResults = validStates.map(state => drawingTools.validateStateName(state));
+                const allStatesValid = stateValidationResults.every(result => result);
+                const invalidStateResult = drawingTools.validateStateName('InvalidState');
+                addResult('State Validation', allStatesValid && !invalidStateResult, 
+                         allStatesValid && !invalidStateResult ? 'State validation works correctly' : 'State validation failed');
+                
+                // Test 9: AnnotationManager Integration
+                try {
+                    // Set up a mock image context
+                    annotationManager.currentImageId = 'test-image-1';
+                    annotationManager.annotations.set('test-image-1', []);
+                    
+                    const integrationWorks = typeof annotationManager.createAnnotation === 'function';
+                    addResult('AnnotationManager Integration', integrationWorks, 
+                             integrationWorks ? 'AnnotationManager integration working' : 'AnnotationManager integration failed');
+                } catch (error) {
+                    addResult('AnnotationManager Integration', false, `Error: ${error.message}`);
+                }
+                
+                // Test 10: Create Sample Annotation
+                try {
+                    const sampleBbox = { x: 100, y: 100, width: 150, height: 100 };
+                    const annotation = annotationManager.createAnnotation(sampleBbox, 'Car', 0.95);
+                    
+                    const annotationCreated = annotation && annotation.id;
+                    addResult('Sample Annotation Creation', annotationCreated, 
+                             annotationCreated ? `Created annotation ${annotation.id}` : 'Failed to create annotation');
+                    
+                    if (annotationCreated) {
+                        // Set annotations in canvas renderer
+                        canvasRenderer.setAnnotations([annotation]);
+                        updateAnnotationList();
+                    }
+                } catch (error) {
+                    addResult('Sample Annotation Creation', false, `Error: ${error.message}`);
+                }
+                
+                // Test 11: Coordinate Transformations
+                try {
+                    const canvasCoords = canvasRenderer.getCanvasCoordinates(100, 100);
+                    const screenCoords = canvasRenderer.getScreenCoordinates(50, 50);
+                    
+                    const coordsWork = canvasCoords && screenCoords && 
+                                     typeof canvasCoords.x === 'number' && 
+                                     typeof screenCoords.x === 'number';
+                    addResult('Coordinate Transformations', coordsWork, 
+                             coordsWork ? 'Coordinate transformations working' : 'Coordinate transformations failed');
+                } catch (error) {
+                    addResult('Coordinate Transformations', false, `Error: ${error.message}`);
+                }
+                
+                // Test 12: Event Handler Setup
+                try {
+                    const hasEventHandlers = drawingTools.handleMouseDown && 
+                                           drawingTools.handleMouseMove && 
+                                           drawingTools.handleMouseUp;
+                    addResult('Event Handler Setup', hasEventHandlers, 
+                             hasEventHandlers ? 'Event handlers set up correctly' : 'Event handlers missing');
+                } catch (error) {
+                    addResult('Event Handler Setup', false, `Error: ${error.message}`);
+                }
+                
+                addInfo('Automated tests completed. Try manual testing with the canvas above.');
+                
+                // Summary
+                const passedTests = testResults.filter(result => result.passed).length;
+                const totalTests = testResults.length;
+                const successRate = ((passedTests / totalTests) * 100).toFixed(1);
+                
+                addInfo(`Test Summary: ${passedTests}/${totalTests} tests passed (${successRate}%)`);
+                
+            } catch (error) {
+                addResult('Test Execution', false, `Unexpected error: ${error.message}`);
+                console.error('Test execution error:', error);
+            }
+        }
+        
+        // Set up event listeners
+        document.getElementById('start-test').addEventListener('click', runAutomatedTests);
+        
+        document.getElementById('clear-canvas').addEventListener('click', () => {
+            if (canvasRenderer) {
+                canvasRenderer.clearCanvas();
+                canvasRenderer.setAnnotations([]);
+                annotationManager.annotations.set('test-image-1', []);
+                updateAnnotationList();
+                addInfo('Canvas cleared');
+            }
+        });
+        
+        document.getElementById('add-sample-annotation').addEventListener('click', () => {
+            if (annotationManager && canvasRenderer) {
+                const randomX = Math.floor(Math.random() * 600) + 50;
+                const randomY = Math.floor(Math.random() * 400) + 50;
+                const randomWidth = Math.floor(Math.random() * 150) + 50;
+                const randomHeight = Math.floor(Math.random() * 100) + 50;
+                
+                const classes = ['Car', 'Truck', 'Bus', 'Person', 'Other'];
+                const randomClass = classes[Math.floor(Math.random() * classes.length)];
+                
+                const bbox = { x: randomX, y: randomY, width: randomWidth, height: randomHeight };
+                const annotation = annotationManager.createAnnotation(bbox, randomClass, Math.random());
+                
+                if (annotation) {
+                    const currentAnnotations = annotationManager.getCurrentAnnotations();
+                    canvasRenderer.setAnnotations(currentAnnotations);
+                    updateAnnotationList();
+                    addInfo(`Added random ${randomClass} annotation`);
+                }
+            }
+        });
+        
+        document.getElementById('drawing-mode').addEventListener('change', (e) => {
+            if (drawingTools) {
+                if (e.target.checked) {
+                    drawingTools.enableDrawMode();
+                    addInfo('Drawing mode enabled');
+                } else {
+                    drawingTools.disableDrawMode();
+                    addInfo('Selection mode enabled');
+                }
+            }
+        });
+        
+        // Set up annotation manager callbacks
+        annotationManager.setOnAnnotationsChanged(() => {
+            updateAnnotationList();
+        });
+        
+        annotationManager.setOnAnnotationSelected((annotation) => {
+            addInfo(`Selected annotation: ${annotation.className}`);
+            updateAnnotationList();
+        });
+        
+        // Initialize with test image context
+        annotationManager.currentImageId = 'test-image-1';
+        annotationManager.annotations.set('test-image-1', []);
+        
+        console.log('Checkpoint 8 test page loaded. Click "Start Automated Tests" to begin.');
+    </script>
+</body>
+</html>
