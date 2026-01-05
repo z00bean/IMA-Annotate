@@ -138,9 +138,6 @@ export class APIClient {
         }
     }
 
-    /**
-     * Get annotations for a specific image
-     */
     async getAnnotations(imageId) {
         if (this.sampleMode) {
             return this.getSampleAnnotations(imageId);
@@ -308,6 +305,16 @@ export class APIClient {
     }
 
     getSampleAnnotations(imageId) {
+        // First check if we have saved annotations in local storage
+        const savedAnnotations = this.loadAnnotationsFromLocalStorage(imageId);
+        if (savedAnnotations.length > 0) {
+            return {
+                success: true,
+                annotations: savedAnnotations,
+                mode: 'sample'
+            };
+        }
+
         // Generate mock annotations for demonstration
         const mockAnnotations = [
             {
@@ -318,7 +325,9 @@ export class APIClient {
                 confidence: 0.95,
                 state: 'Suggested',
                 createdAt: new Date().toISOString(),
-                modifiedAt: new Date().toISOString()
+                modifiedAt: new Date().toISOString(),
+                segmentationMask: null,
+                metadata: {}
             },
             {
                 id: `${imageId}-ann-2`,
@@ -328,9 +337,26 @@ export class APIClient {
                 confidence: 0.87,
                 state: 'Suggested',
                 createdAt: new Date().toISOString(),
-                modifiedAt: new Date().toISOString()
+                modifiedAt: new Date().toISOString(),
+                segmentationMask: null,
+                metadata: {}
+            },
+            {
+                id: `${imageId}-ann-3`,
+                imageId: imageId,
+                bbox: { x: 500, y: 100, width: 180, height: 140 },
+                className: 'Truck',
+                confidence: 0.92,
+                state: 'Suggested',
+                createdAt: new Date().toISOString(),
+                modifiedAt: new Date().toISOString(),
+                segmentationMask: null,
+                metadata: {}
             }
         ];
+
+        // Save mock annotations to local storage for persistence
+        this.saveAnnotationsToLocalStorage(imageId, mockAnnotations);
 
         return {
             success: true,
@@ -341,22 +367,26 @@ export class APIClient {
 
     saveSampleAnnotation(annotation) {
         try {
-            // Save to local storage
-            const key = `ima-annotations-${annotation.imageId}`;
-            const existing = JSON.parse(localStorage.getItem(key) || '[]');
+            const imageId = annotation.imageId;
+            
+            // Load existing annotations
+            const existing = this.loadAnnotationsFromLocalStorage(imageId);
             
             // Add or update annotation
             const index = existing.findIndex(ann => ann.id === annotation.id);
             if (index >= 0) {
+                // Update existing annotation
                 existing[index] = { ...annotation, modifiedAt: new Date().toISOString() };
             } else {
+                // Add new annotation
                 annotation.id = annotation.id || `local-${Date.now()}`;
-                annotation.createdAt = new Date().toISOString();
+                annotation.createdAt = annotation.createdAt || new Date().toISOString();
                 annotation.modifiedAt = new Date().toISOString();
                 existing.push(annotation);
             }
             
-            localStorage.setItem(key, JSON.stringify(existing));
+            // Save back to local storage
+            this.saveAnnotationsToLocalStorage(imageId, existing);
             
             return {
                 success: true,
@@ -380,11 +410,12 @@ export class APIClient {
             const keys = Object.keys(localStorage).filter(key => key.startsWith('ima-annotations-'));
             
             for (const key of keys) {
-                const annotations = JSON.parse(localStorage.getItem(key) || '[]');
+                const imageId = key.replace('ima-annotations-', '');
+                const annotations = this.loadAnnotationsFromLocalStorage(imageId);
                 const filtered = annotations.filter(ann => ann.id !== annotationId);
                 
                 if (filtered.length !== annotations.length) {
-                    localStorage.setItem(key, JSON.stringify(filtered));
+                    this.saveAnnotationsToLocalStorage(imageId, filtered);
                     return {
                         success: true,
                         message: 'Annotation deleted from local storage (sample mode)',
@@ -431,6 +462,40 @@ export class APIClient {
         }
         
         return result;
+    }
+
+    /**
+     * Local storage helper methods for sample mode persistence
+     */
+    loadAnnotationsFromLocalStorage(imageId) {
+        try {
+            const key = `ima-annotations-${imageId}`;
+            const stored = localStorage.getItem(key);
+            return stored ? JSON.parse(stored) : [];
+        } catch (error) {
+            console.error('Failed to load annotations from local storage:', error);
+            return [];
+        }
+    }
+
+    saveAnnotationsToLocalStorage(imageId, annotations) {
+        try {
+            const key = `ima-annotations-${imageId}`;
+            localStorage.setItem(key, JSON.stringify(annotations));
+            console.log(`Saved ${annotations.length} annotations to local storage for image ${imageId}`);
+        } catch (error) {
+            console.error('Failed to save annotations to local storage:', error);
+        }
+    }
+
+    clearAnnotationsFromLocalStorage(imageId) {
+        try {
+            const key = `ima-annotations-${imageId}`;
+            localStorage.removeItem(key);
+            console.log(`Cleared annotations from local storage for image ${imageId}`);
+        } catch (error) {
+            console.error('Failed to clear annotations from local storage:', error);
+        }
     }
 }
 

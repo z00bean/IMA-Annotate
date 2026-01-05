@@ -8,6 +8,7 @@ import { apiClient } from './api-client.js';
 import { statusBanner } from './status-banner.js';
 import { imageManager } from './image-manager.js';
 import { initializeCanvasRenderer } from './canvas-renderer.js';
+import { annotationManager } from './annotation-manager.js';
 
 /**
  * Main Application Class
@@ -171,6 +172,13 @@ class App {
         imageManager.setOnImageLoaded((image) => this.onImageLoaded(image));
         imageManager.setOnImageLoadError((error, imageData) => this.onImageLoadError(error, imageData));
         imageManager.setOnNavigationChange((navInfo) => this.onNavigationChange(navInfo));
+        
+        // Set up annotation manager callbacks
+        annotationManager.setOnAnnotationsChanged((annotations) => this.onAnnotationsChanged(annotations));
+        annotationManager.setOnAnnotationSelected((annotation) => this.onAnnotationSelected(annotation));
+        annotationManager.setOnAnnotationStateChanged((annotation) => this.onAnnotationStateChanged(annotation));
+        annotationManager.setOnSaveComplete((result) => this.onSaveComplete(result));
+        annotationManager.setOnSaveError((result) => this.onSaveError(result));
         
         console.log('Canvas initialized with CanvasRenderer');
     }
@@ -362,8 +370,8 @@ class App {
         if (success) {
             console.log('Image rendered successfully');
             
-            // Add sample annotations for demonstration
-            this.addSampleAnnotations();
+            // Load annotations for this image
+            this.loadAnnotationsForCurrentImage(image.data.id);
         } else {
             console.warn('Failed to render image');
         }
@@ -373,64 +381,43 @@ class App {
     }
 
     /**
-     * Add sample annotations for demonstration purposes
+     * Load annotations for the current image
      */
-    addSampleAnnotations() {
-        const imageInfo = this.canvasRenderer.getImageInfo();
-        if (!imageInfo) {
-            return;
-        }
-
-        // Generate sample annotations based on image size
-        const sampleAnnotations = [
-            {
-                id: 'sample_1',
-                bbox: {
-                    x: imageInfo.originalWidth * 0.1,
-                    y: imageInfo.originalHeight * 0.2,
-                    width: imageInfo.originalWidth * 0.15,
-                    height: imageInfo.originalHeight * 0.12
-                },
-                className: 'Car',
-                confidence: 0.92,
-                state: 'Suggested',
-                createdAt: new Date()
-            },
-            {
-                id: 'sample_2',
-                bbox: {
-                    x: imageInfo.originalWidth * 0.4,
-                    y: imageInfo.originalHeight * 0.3,
-                    width: imageInfo.originalWidth * 0.2,
-                    height: imageInfo.originalHeight * 0.25
-                },
-                className: 'Truck',
-                confidence: 0.87,
-                state: 'Verified',
-                createdAt: new Date()
-            },
-            {
-                id: 'sample_3',
-                bbox: {
-                    x: imageInfo.originalWidth * 0.7,
-                    y: imageInfo.originalHeight * 0.1,
-                    width: imageInfo.originalWidth * 0.12,
-                    height: imageInfo.originalHeight * 0.18
-                },
-                className: 'Person',
-                confidence: 0.76,
-                state: 'Modified',
-                createdAt: new Date()
+    async loadAnnotationsForCurrentImage(imageId) {
+        try {
+            console.log(`Loading annotations for image: ${imageId}`);
+            
+            const result = await annotationManager.loadAnnotations(imageId);
+            
+            if (result.success) {
+                console.log(`Loaded ${result.annotations.length} annotations`);
+                
+                // Set annotations in canvas renderer
+                this.canvasRenderer.setAnnotations(result.annotations);
+                
+                // Update annotation counts
+                this.updateAnnotationCounts();
+                
+                // Show sample mode notification if applicable
+                if (result.mode === 'sample') {
+                    console.log('Annotations loaded in sample mode');
+                }
+                
+            } else {
+                console.error('Failed to load annotations:', result.error);
+                
+                // Clear annotations and show empty state
+                this.canvasRenderer.setAnnotations([]);
+                this.updateAnnotationCounts();
             }
-        ];
-
-        // Set annotations in canvas renderer
-        this.canvasRenderer.setAnnotations(sampleAnnotations);
-        
-        // Update annotation counts
-        this.updateAnnotationCounts();
-        
-        console.log(`Added ${sampleAnnotations.length} sample annotations`);
+            
+        } catch (error) {
+            console.error('Error loading annotations:', error);
+            
+            // Clear annotations and show empty state
+            this.canvasRenderer.setAnnotations([]);
+            this.updateAnnotationCounts();
+        }
     }
 
     onImageLoadError(error, imageData) {
@@ -494,16 +481,60 @@ class App {
     }
 
     /**
-     * Save and export methods (placeholders for future implementation)
+     * Save and export methods - now implemented with AnnotationManager
      */
-    saveAnnotations() {
+    async saveAnnotations() {
         console.log('Save annotations requested');
-        // Will be implemented in future tasks
+        
+        try {
+            this.showLoadingIndicator();
+            
+            const result = await annotationManager.saveAnnotations();
+            
+            if (result.success) {
+                statusBanner.showSuccess(result.message);
+                console.log(`Successfully saved ${result.savedCount} annotations`);
+            } else {
+                statusBanner.showError(result.message);
+                console.error('Failed to save annotations:', result.errors);
+            }
+            
+        } catch (error) {
+            console.error('Error saving annotations:', error);
+            statusBanner.showError('Failed to save annotations. Check console for details.');
+        } finally {
+            this.hideLoadingIndicator();
+        }
     }
 
     exportAnnotations() {
         console.log('Export annotations requested');
-        // Will be implemented in future tasks
+        
+        try {
+            // Default to YOLO format for now
+            const result = annotationManager.exportAnnotations('yolo');
+            
+            if (result.success) {
+                // Create and download file
+                const dataStr = JSON.stringify(result.data, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(dataBlob);
+                link.download = `annotations_${Date.now()}.json`;
+                link.click();
+                
+                statusBanner.showSuccess(`Exported ${result.annotationCount} annotations`);
+                console.log(`Exported ${result.annotationCount} annotations in ${result.format} format`);
+            } else {
+                statusBanner.showError(result.error);
+                console.error('Failed to export annotations:', result.error);
+            }
+            
+        } catch (error) {
+            console.error('Error exporting annotations:', error);
+            statusBanner.showError('Failed to export annotations. Check console for details.');
+        }
     }
 
     /**
@@ -601,9 +632,12 @@ class App {
         const annotation = this.canvasRenderer.getAnnotationAtPoint(canvasCoords.x, canvasCoords.y);
         
         if (annotation) {
-            this.canvasRenderer.highlightAnnotation(annotation.id);
+            // Select annotation through annotation manager
+            annotationManager.selectAnnotation(annotation.id);
             console.log(`Selected annotation: ${annotation.className} (${annotation.id})`);
         } else {
+            // Clear selection
+            annotationManager.clearSelection();
             this.canvasRenderer.clearSelection();
             console.log(`Clicked empty area at (${canvasCoords.x.toFixed(1)}, ${canvasCoords.y.toFixed(1)})`);
         }
@@ -649,24 +683,65 @@ class App {
     }
 
     updateAnnotationCounts() {
-        // Get annotations from canvas renderer
-        const annotations = this.canvasRenderer?.annotations || [];
-        
-        // Calculate counts by state
-        const counts = {
-            suggested: annotations.filter(ann => ann.state === 'Suggested').length,
-            verified: annotations.filter(ann => ann.state === 'Verified').length,
-            modified: annotations.filter(ann => ann.state === 'Modified').length,
-            rejected: annotations.filter(ann => ann.state === 'Rejected').length
-        };
+        // Get counts from annotation manager
+        const counts = annotationManager.getAnnotationCounts();
 
         // Update count displays
-        if (this.suggestedCount) this.suggestedCount.textContent = counts.suggested;
-        if (this.verifiedCount) this.verifiedCount.textContent = counts.verified;
-        if (this.modifiedCount) this.modifiedCount.textContent = counts.modified;
-        if (this.rejectedCount) this.rejectedCount.textContent = counts.rejected;
+        if (this.suggestedCount) this.suggestedCount.textContent = counts.Suggested;
+        if (this.verifiedCount) this.verifiedCount.textContent = counts.Verified;
+        if (this.modifiedCount) this.modifiedCount.textContent = counts.Modified;
+        if (this.rejectedCount) this.rejectedCount.textContent = counts.Rejected;
         
         console.log('Annotation counts updated:', counts);
+    }
+
+    /**
+     * Annotation Manager Callback Methods
+     */
+    onAnnotationsChanged(annotations) {
+        console.log(`Annotations changed: ${annotations.length} annotations`);
+        
+        // Update canvas renderer with new annotations
+        if (this.canvasRenderer) {
+            this.canvasRenderer.setAnnotations(annotations);
+        }
+        
+        // Update annotation counts
+        this.updateAnnotationCounts();
+    }
+
+    onAnnotationSelected(annotation) {
+        console.log(`Annotation selected: ${annotation.id} (${annotation.className})`);
+        
+        // Highlight annotation in canvas renderer
+        if (this.canvasRenderer) {
+            this.canvasRenderer.highlightAnnotation(annotation.id);
+        }
+        
+        // Update UI to show selected annotation details
+        // This could be expanded to show annotation properties in a sidebar
+    }
+
+    onAnnotationStateChanged(annotation) {
+        console.log(`Annotation state changed: ${annotation.id} -> ${annotation.state}`);
+        
+        // Update annotation counts to reflect state change
+        this.updateAnnotationCounts();
+        
+        // Trigger canvas redraw to show state color changes
+        if (this.canvasRenderer) {
+            this.canvasRenderer.redraw();
+        }
+    }
+
+    onSaveComplete(result) {
+        console.log(`Save completed: ${result.savedCount} annotations saved`);
+        statusBanner.showSuccess(result.message);
+    }
+
+    onSaveError(result) {
+        console.error(`Save failed: ${result.errorCount} errors`, result.errors);
+        statusBanner.showError(result.message);
     }
 
     /**
