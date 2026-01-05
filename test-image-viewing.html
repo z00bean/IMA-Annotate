@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMA Annotate Frontend - Image Viewing Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #test-output {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>IMA Annotate Frontend - Image Viewing Test</h1>
+        <p>This page tests the basic image viewing functionality of the IMA Annotate Frontend.</p>
+        
+        <div class="test-section">
+            <h2>Test Controls</h2>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <button onclick="testImageLoading()">Test Image Loading</button>
+            <button onclick="testNavigation()">Test Navigation</button>
+            <button onclick="testApiConnection()">Test API Connection</button>
+            <button onclick="clearOutput()">Clear Output</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test Output</h2>
+            <div id="test-output"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Manual Testing Instructions</h2>
+            <ol>
+                <li>Open the main application: <a href="/" target="_blank">index.html</a></li>
+                <li>Check that the page loads without JavaScript errors (open browser console)</li>
+                <li>Verify that sample images load automatically</li>
+                <li>Test navigation buttons (Previous/Next)</li>
+                <li>Test keyboard shortcuts (Left/Right arrow keys)</li>
+                <li>Verify that image counter updates correctly</li>
+                <li>Check that navigation buttons are disabled at boundaries</li>
+                <li>Verify that status banner shows sample mode notification</li>
+            </ol>
+        </div>
+    </div>
+
+    <script type="module">
+        import { CONFIG } from './config.js';
+        import { apiClient } from './js/api-client.js';
+        import { imageManager } from './js/image-manager.js';
+        
+        let output = document.getElementById('test-output');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            output.textContent += logEntry;
+            output.scrollTop = output.scrollHeight;
+            
+            console.log(`Test: ${message}`);
+        }
+        
+        function logError(message, error) {
+            log(`ERROR: ${message} - ${error.message}`, 'error');
+            console.error('Test Error:', message, error);
+        }
+        
+        function logSuccess(message) {
+            log(`SUCCESS: ${message}`, 'success');
+        }
+        
+        window.clearOutput = function() {
+            output.textContent = '';
+        }
+        
+        window.testImageLoading = async function() {
+            log('=== Testing Image Loading ===');
+            
+            try {
+                // Test sample images configuration
+                log(`Sample images configured: ${CONFIG.SAMPLE_IMAGES.length}`);
+                CONFIG.SAMPLE_IMAGES.forEach((img, index) => {
+                    log(`  ${index + 1}. ${img}`);
+                });
+                
+                // Test image loading through API client
+                log('Testing image loading through API client...');
+                const result = await apiClient.getImages();
+                
+                if (result.success) {
+                    logSuccess(`Loaded ${result.images.length} images in ${result.mode || 'live'} mode`);
+                    result.images.forEach((img, index) => {
+                        log(`  ${index + 1}. ${img.filename} (${img.path})`);
+                    });
+                } else {
+                    logError('Failed to load images', new Error(result.error || 'Unknown error'));
+                }
+                
+                // Test individual image loading
+                log('Testing individual image loading...');
+                for (const imagePath of CONFIG.SAMPLE_IMAGES) {
+                    try {
+                        const img = await imageManager.loadImage(imagePath);
+                        logSuccess(`Loaded ${imagePath} (${img.width}x${img.height})`);
+                    } catch (error) {
+                        logError(`Failed to load ${imagePath}`, error);
+                    }
+                }
+                
+            } catch (error) {
+                logError('Image loading test failed', error);
+            }
+        }
+        
+        window.testNavigation = async function() {
+            log('=== Testing Navigation ===');
+            
+            try {
+                // Initialize image manager with mock canvas
+                const mockCanvas = document.createElement('canvas');
+                const mockContainer = document.createElement('div');
+                mockContainer.style.width = '800px';
+                mockContainer.style.height = '600px';
+                
+                imageManager.init(mockCanvas, mockContainer);
+                
+                // Load images
+                log('Loading images for navigation test...');
+                const loadResult = await imageManager.loadImages();
+                
+                if (!loadResult.success) {
+                    throw new Error('Failed to load images for navigation test');
+                }
+                
+                logSuccess(`Loaded ${loadResult.total} images for navigation test`);
+                
+                // Test initial state
+                log(`Initial image index: ${imageManager.getCurrentImageIndex()}`);
+                log(`Total images: ${imageManager.getImageCount()}`);
+                log(`Can navigate previous: ${imageManager.canNavigatePrevious()}`);
+                log(`Can navigate next: ${imageManager.canNavigateNext()}`);
+                
+                // Test navigation bounds
+                if (imageManager.getImageCount() > 1) {
+                    // Test next navigation
+                    log('Testing next image navigation...');
+                    const nextImage = await imageManager.nextImage();
+                    if (nextImage) {
+                        logSuccess(`Navigated to next image: ${nextImage.data.filename}`);
+                        log(`New index: ${imageManager.getCurrentImageIndex()}`);
+                    }
+                    
+                    // Test previous navigation
+                    log('Testing previous image navigation...');
+                    const prevImage = await imageManager.previousImage();
+                    if (prevImage) {
+                        logSuccess(`Navigated to previous image: ${prevImage.data.filename}`);
+                        log(`New index: ${imageManager.getCurrentImageIndex()}`);
+                    }
+                    
+                    // Test direct navigation
+                    log('Testing direct navigation to last image...');
+                    const lastIndex = imageManager.getImageCount() - 1;
+                    const lastImage = await imageManager.goToImage(lastIndex);
+                    if (lastImage) {
+                        logSuccess(`Navigated to last image: ${lastImage.data.filename}`);
+                        log(`Final index: ${imageManager.getCurrentImageIndex()}`);
+                    }
+                } else {
+                    log('Only one image available, skipping navigation tests');
+                }
+                
+            } catch (error) {
+                logError('Navigation test failed', error);
+            }
+        }
+        
+        window.testApiConnection = async function() {
+            log('=== Testing API Connection ===');
+            
+            try {
+                log(`API Base URL: ${CONFIG.API_BASE_URL}`);
+                log(`API Key configured: ${CONFIG.API_KEY ? 'Yes' : 'No'}`);
+                
+                // Test connection (should fail with dummy endpoints)
+                log('Testing API connection (expected to fail with dummy endpoints)...');
+                const connectionResult = await apiClient.testConnection();
+                
+                if (connectionResult.success) {
+                    logSuccess('API connection successful');
+                    log(`Mode: ${connectionResult.mode}`);
+                } else {
+                    log(`API connection failed as expected: ${connectionResult.message}`);
+                    log(`Fallback mode: ${connectionResult.mode}`);
+                    logSuccess('Sample mode fallback working correctly');
+                }
+                
+                // Test API key validation
+                log('Testing API key validation...');
+                const keyValidation = await apiClient.validateApiKey();
+                log(`API key valid: ${keyValidation.valid}`);
+                log(`Validation message: ${keyValidation.message}`);
+                
+                // Test connection status
+                const status = apiClient.getConnectionStatus();
+                log('Connection Status:');
+                log(`  Connected: ${status.connected}`);
+                log(`  Sample Mode: ${status.sampleMode}`);
+                log(`  API Key: ${status.apiKey}`);
+                log(`  Base URL: ${status.baseUrl}`);
+                
+            } catch (error) {
+                logError('API connection test failed', error);
+            }
+        }
+        
+        window.runAllTests = async function() {
+            log('=== Running All Tests ===');
+            log('Starting comprehensive test suite...\n');
+            
+            await testApiConnection();
+            log('');
+            await testImageLoading();
+            log('');
+            await testNavigation();
+            log('');
+            
+            logSuccess('All tests completed!');
+            log('Check the main application at: http://localhost:8080/');
+        }
+        
+        // Auto-run tests when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Test page loaded. Ready to run tests.');
+            log('Click "Run All Tests" to start automated testing.');
+        });
+    </script>
+</body>
+</html>

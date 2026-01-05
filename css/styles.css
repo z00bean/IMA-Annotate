@@ -1,0 +1,343 @@
+/**
+ * Custom CSS for IMA Annotate Frontend
+ * Provides styling for canvas, layout, and responsive design
+ */
+
+/* Global Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+/* Header Styles */
+header {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Toolbar Styles */
+.toolbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: 1px solid #dee2e6;
+}
+
+.toolbar .btn-group .btn {
+    border-radius: 0.375rem;
+    margin: 0 2px;
+}
+
+.toolbar .btn-group .btn:first-child {
+    margin-left: 0;
+}
+
+.toolbar .btn-group .btn:last-child {
+    margin-right: 0;
+}
+
+/* Canvas Container Styles */
+.canvas-container {
+    position: relative;
+    min-height: 400px;
+    max-height: 800px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* Canvas Styles */
+#annotation-canvas {
+    display: block;
+    margin: 0 auto;
+    cursor: crosshair;
+    background-color: #ffffff;
+    border: 2px solid #dee2e6;
+    border-radius: 0.375rem;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+#annotation-canvas.select-mode {
+    cursor: default;
+}
+
+#annotation-canvas.drawing-mode {
+    cursor: crosshair;
+}
+
+#annotation-canvas.move-mode {
+    cursor: move;
+}
+
+#annotation-canvas.resize-mode {
+    cursor: nw-resize;
+}
+
+/* Loading Indicator */
+#loading-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 0.5rem;
+    padding: 2rem;
+}
+
+/* Status Banner */
+#status-banner {
+    margin-bottom: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+}
+
+#status-banner.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+#status-banner.alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+#status-banner.alert-success {
+    background-color: #d1edff;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+#status-banner.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+/* Mobile responsive banner */
+#status-banner.banner-mobile {
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+}
+
+#status-banner.banner-mobile .btn-close {
+    font-size: 0.75rem;
+    padding: 0.25rem;
+}
+
+/* Sidebar Styles */
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: 1px solid #dee2e6;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Annotation Summary Badges */
+.badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* Class Selector */
+#class-selector {
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+}
+
+#class-selector:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* ROI Controls */
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* Image Counter */
+#image-counter {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+/* Button States */
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn.active {
+    box-shadow: inset 0 3px 5px rgba(0,0,0,0.125);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .toolbar .row > div {
+        margin-bottom: 1rem;
+    }
+    
+    .toolbar .col-md-4 {
+        text-align: center;
+    }
+    
+    .canvas-container {
+        min-height: 300px;
+    }
+    
+    #annotation-canvas {
+        max-width: 100%;
+        height: auto;
+    }
+}
+
+@media (max-width: 576px) {
+    .toolbar .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .toolbar .btn {
+        margin: 2px;
+        font-size: 0.875rem;
+    }
+    
+    header h1 {
+        font-size: 1.5rem;
+    }
+    
+    header p {
+        font-size: 0.8rem;
+    }
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* Canvas Drawing Styles */
+.annotation-box {
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: none;
+}
+
+.annotation-box.suggested {
+    stroke: #FFA500;
+    stroke-dasharray: 5,5;
+}
+
+.annotation-box.modified {
+    stroke: #FFD700;
+    stroke-width: 3;
+}
+
+.annotation-box.verified {
+    stroke: #32CD32;
+    stroke-width: 2;
+}
+
+.annotation-box.rejected {
+    stroke: #FF6347;
+    stroke-dasharray: 10,5;
+    opacity: 0.5;
+}
+
+.annotation-box.selected {
+    stroke-width: 3;
+    filter: drop-shadow(0 0 5px rgba(0,0,0,0.3));
+}
+
+/* Resize Handles */
+.resize-handle {
+    fill: #ffffff;
+    stroke: #007bff;
+    stroke-width: 2;
+    cursor: nw-resize;
+}
+
+.resize-handle:hover {
+    fill: #007bff;
+}
+
+/* ROI Styles */
+.roi-polygon {
+    fill: rgba(255, 193, 7, 0.2);
+    stroke: #ffc107;
+    stroke-width: 2;
+    stroke-dasharray: 10,5;
+}
+
+.roi-polygon.active {
+    fill: rgba(255, 193, 7, 0.3);
+    stroke-width: 3;
+}
+
+/* Accessibility Improvements */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* Focus Styles for Accessibility */
+.btn:focus,
+.form-select:focus,
+.form-check-input:focus {
+    outline: 2px solid #0d6efd;
+    outline-offset: 2px;
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+    .canvas-container {
+        border: 3px solid #000000;
+    }
+    
+    #annotation-canvas {
+        border: 2px solid #000000;
+    }
+    
+    .btn {
+        border: 2px solid currentColor;
+    }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+    .fade-in,
+    .fade-out {
+        animation: none;
+    }
+    
+    * {
+        transition: none !important;
+    }
+}
