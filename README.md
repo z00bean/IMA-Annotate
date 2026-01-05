@@ -4,6 +4,7 @@
 IMA Annotate is an internal, research-focused **human-verified annotation tool** for safety-critical transportation vision datasets. It combines **Grounding DINO (Swin-T)** for class-aware detection and **SAM v2** for high-quality segmentation, with a strict **human-in-the-loop verification workflow**.
 
 
+
 IMA Annotate was built to **accelerate annotation while preserving trust, auditability, and human control**.
 
 ## System Architecture
