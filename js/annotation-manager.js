@@ -223,7 +223,7 @@ export class AnnotationManager {
             return false;
         }
 
-        const annotation = this.findAnnotationById(id);
+        const annotation = this.findAnnotationByIdInternal(id);
         if (!annotation) {
             console.error(`Cannot update annotation: annotation ${id} not found`);
             return false;
@@ -298,7 +298,7 @@ export class AnnotationManager {
             return false;
         }
 
-        const annotation = this.findAnnotationById(id);
+        const annotation = this.findAnnotationByIdInternal(id);
         if (!annotation) {
             console.error(`Cannot delete annotation: annotation ${id} not found`);
             return false;
@@ -338,7 +338,7 @@ export class AnnotationManager {
      */
     changeState(annotationOrId, newState) {
         const annotation = typeof annotationOrId === 'string' 
-            ? this.findAnnotationById(annotationOrId)
+            ? this.findAnnotationByIdInternal(annotationOrId)
             : annotationOrId;
 
         if (!annotation) {
@@ -452,7 +452,7 @@ export class AnnotationManager {
             return true;
         }
 
-        const annotation = this.findAnnotationById(annotationId);
+        const annotation = this.findAnnotationByIdInternal(annotationId);
         if (!annotation) {
             console.error(`Cannot select annotation: annotation ${annotationId} not found`);
             return false;
@@ -478,7 +478,7 @@ export class AnnotationManager {
      */
     clearSelection() {
         if (this.selectedAnnotation) {
-            const annotation = this.findAnnotationById(this.selectedAnnotation);
+            const annotation = this.findAnnotationByIdInternal(this.selectedAnnotation);
             if (annotation) {
                 annotation.selected = false;
             }
@@ -497,7 +497,7 @@ export class AnnotationManager {
             return null;
         }
 
-        return this.findAnnotationById(this.selectedAnnotation);
+        return this.findAnnotationByIdInternal(this.selectedAnnotation);
     }
 
     /**
@@ -722,13 +722,22 @@ export class AnnotationManager {
     }
 
     /**
+     * Find annotation by ID (public method)
+     * @param {string} id - Annotation ID
+     * @returns {Object|null} - Annotation object or null
+     */
+    findAnnotationById(id) {
+        return this.findAnnotationByIdInternal(id);
+    }
+
+    /**
      * Utility methods
      */
     generateAnnotationId() {
         return 'ann_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
 
-    findAnnotationById(id) {
+    findAnnotationByIdInternal(id) {
         if (!this.currentImageId) {
             return null;
         }

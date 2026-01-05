@@ -9,6 +9,7 @@ import { statusBanner } from './status-banner.js';
 import { imageManager } from './image-manager.js';
 import { initializeCanvasRenderer } from './canvas-renderer.js';
 import { annotationManager } from './annotation-manager.js';
+import { initializeDrawingTools } from './drawing-tools.js';
 
 /**
  * Main Application Class
@@ -145,9 +146,6 @@ class App {
         // Window resize events
         window.addEventListener('resize', () => this.handleWindowResize());
         
-        // Canvas click events for annotation selection
-        this.canvas?.addEventListener('click', (event) => this.handleCanvasClick(event));
-        
         console.log('Event listeners set up');
     }
 
@@ -168,6 +166,14 @@ class App {
             return;
         }
         
+        // Initialize drawing tools
+        this.drawingTools = initializeDrawingTools(this.canvas, this.canvasRenderer);
+        
+        if (!this.drawingTools) {
+            console.error('Failed to initialize drawing tools');
+            return;
+        }
+        
         // Set up image manager callbacks
         imageManager.setOnImageLoaded((image) => this.onImageLoaded(image));
         imageManager.setOnImageLoadError((error, imageData) => this.onImageLoadError(error, imageData));
@@ -180,7 +186,7 @@ class App {
         annotationManager.setOnSaveComplete((result) => this.onSaveComplete(result));
         annotationManager.setOnSaveError((result) => this.onSaveError(result));
         
-        console.log('Canvas initialized with CanvasRenderer');
+        console.log('Canvas initialized with CanvasRenderer and DrawingTools');
     }
 
     /**
@@ -448,15 +454,22 @@ class App {
     setDrawingMode(enabled) {
         this.state.drawingMode = enabled;
         
+        // Update drawing tools
+        if (this.drawingTools) {
+            if (enabled) {
+                this.drawingTools.enableDrawMode();
+            } else {
+                this.drawingTools.disableDrawMode();
+            }
+        }
+        
         // Update button states
         if (enabled) {
             this.drawBtn?.classList.add('active');
             this.selectBtn?.classList.remove('active');
-            this.canvas.style.cursor = 'crosshair';
         } else {
             this.drawBtn?.classList.remove('active');
             this.selectBtn?.classList.add('active');
-            this.canvas.style.cursor = 'default';
         }
         
         console.log(`Drawing mode ${enabled ? 'enabled' : 'disabled'}`);
@@ -626,21 +639,9 @@ class App {
      * Handle canvas click events for annotation selection
      */
     handleCanvasClick(event) {
-        if (!this.canvasRenderer) return;
-        
-        const canvasCoords = this.canvasRenderer.getCanvasCoordinates(event.clientX, event.clientY);
-        const annotation = this.canvasRenderer.getAnnotationAtPoint(canvasCoords.x, canvasCoords.y);
-        
-        if (annotation) {
-            // Select annotation through annotation manager
-            annotationManager.selectAnnotation(annotation.id);
-            console.log(`Selected annotation: ${annotation.className} (${annotation.id})`);
-        } else {
-            // Clear selection
-            annotationManager.clearSelection();
-            this.canvasRenderer.clearSelection();
-            console.log(`Clicked empty area at (${canvasCoords.x.toFixed(1)}, ${canvasCoords.y.toFixed(1)})`);
-        }
+        // Drawing tools now handle all canvas interactions
+        // This method is kept for compatibility but drawing tools handle the actual logic
+        console.log('Canvas click handled by drawing tools');
     }
 
     /**
