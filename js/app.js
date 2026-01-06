@@ -59,8 +59,17 @@ class App {
             // Set up event listeners
             this.setupEventListeners();
             
-            // Initialize canvas
+            // Initialize canvas and components
             this.initializeCanvas();
+            
+            // Wire component interactions
+            this.wireComponentInteractions();
+            
+            // Initialize accessibility features
+            this.initializeAccessibilityFeatures();
+            
+            // Initialize performance monitoring
+            this.initializePerformanceMonitoring();
             
             // Show loading indicator
             loadingManager.showLoading('app-init', {
@@ -71,11 +80,14 @@ class App {
             // Test API connectivity
             await this.initializeApiConnection();
             
-            // Load initial data (will be implemented in future tasks)
+            // Load initial data
             await this.loadInitialData();
             
             // Hide loading indicator
             loadingManager.hideLoading('app-init');
+            
+            // Set up cleanup handlers
+            this.setupCleanupHandlers();
             
             this.initialized = true;
             console.log('Application initialized successfully');
@@ -230,6 +242,519 @@ class App {
         roiManager.setOnROIFilteringChanged((active) => this.onROIFilteringChanged(active));
         
         console.log('Canvas initialized with CanvasRenderer and DrawingTools');
+    }
+
+    /**
+     * Wire component interactions and set up proper communication
+     */
+    wireComponentInteractions() {
+        console.log('Wiring component interactions...');
+        
+        // Wire drawing tools with annotation manager
+        if (this.drawingTools && annotationManager) {
+            this.drawingTools.setAnnotationManager(annotationManager);
+            this.drawingTools.setOnAnnotationCreated((annotation) => {
+                console.log('New annotation created via drawing tools:', annotation.id);
+                this.onAnnotationCreated(annotation);
+            });
+            this.drawingTools.setOnAnnotationUpdated((annotation) => {
+                console.log('Annotation updated via drawing tools:', annotation.id);
+                this.onAnnotationUpdated(annotation);
+            });
+            this.drawingTools.setOnAnnotationDeleted((annotationId) => {
+                console.log('Annotation deleted via drawing tools:', annotationId);
+                this.onAnnotationDeleted(annotationId);
+            });
+        }
+        
+        // Wire canvas renderer with drawing tools
+        if (this.canvasRenderer && this.drawingTools) {
+            this.canvasRenderer.setDrawingTools(this.drawingTools);
+            this.drawingTools.setCanvasRenderer(this.canvasRenderer);
+        }
+        
+        // Wire annotation manager with API client
+        if (annotationManager && apiClient) {
+            annotationManager.setApiClient(apiClient);
+        }
+        
+        // Wire image manager with API client
+        if (imageManager && apiClient) {
+            imageManager.setApiClient(apiClient);
+        }
+        
+        // Wire ROI manager with annotation manager
+        if (roiManager && annotationManager) {
+            roiManager.setAnnotationManager(annotationManager);
+            annotationManager.setROIManager(roiManager);
+        }
+        
+        // Wire status banner with all components
+        if (statusBanner) {
+            // Set up global error handler for status banner
+            window.addEventListener('ima-error', (event) => {
+                statusBanner.showError(event.detail.message);
+            });
+            
+            window.addEventListener('ima-warning', (event) => {
+                statusBanner.showWarning(event.detail.message);
+            });
+            
+            window.addEventListener('ima-success', (event) => {
+                statusBanner.showSuccess(event.detail.message);
+            });
+        }
+        
+        console.log('Component interactions wired successfully');
+    }
+
+    /**
+     * Set up cleanup handlers for proper memory management
+     */
+    setupCleanupHandlers() {
+        console.log('Setting up cleanup handlers...');
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+        
+        // Handle visibility change (tab switching)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is hidden, pause any ongoing operations
+                this.pauseOperations();
+            } else {
+                // Page is visible again, resume operations
+                this.resumeOperations();
+            }
+        });
+        
+        // Handle memory pressure (if supported)
+        if ('memory' in performance) {
+            setInterval(() => {
+                this.checkMemoryUsage();
+            }, 30000); // Check every 30 seconds
+        }
+        
+        console.log('Cleanup handlers set up successfully');
+    }
+
+    /**
+     * Cleanup resources and event listeners
+     */
+    cleanup() {
+        console.log('Cleaning up application resources...');
+        
+        try {
+            // Clear any pending timeouts
+            if (this.resizeTimeout) {
+                clearTimeout(this.resizeTimeout);
+            }
+            
+            // Cleanup drawing tools
+            if (this.drawingTools && typeof this.drawingTools.cleanup === 'function') {
+                this.drawingTools.cleanup();
+            }
+            
+            // Cleanup canvas renderer
+            if (this.canvasRenderer && typeof this.canvasRenderer.cleanup === 'function') {
+                this.canvasRenderer.cleanup();
+            }
+            
+            // Cleanup managers
+            if (imageManager && typeof imageManager.cleanup === 'function') {
+                imageManager.cleanup();
+            }
+            
+            if (annotationManager && typeof annotationManager.cleanup === 'function') {
+                annotationManager.cleanup();
+            }
+            
+            if (roiManager && typeof roiManager.cleanup === 'function') {
+                roiManager.cleanup();
+            }
+            
+            // Clear application state
+            this.state = {
+                currentImageIndex: 0,
+                images: [],
+                annotations: new Map(),
+                selectedAnnotation: null,
+                drawingMode: false,
+                apiConnected: false,
+                loading: false,
+                roi: null
+            };
+            
+            console.log('Application cleanup completed');
+            
+        } catch (error) {
+            console.error('Error during cleanup:', error);
+            errorLogger.logError('Application cleanup failed', {
+                type: 'cleanup_error'
+            }, error);
+        }
+    }
+
+    /**
+     * Pause operations when page is hidden
+     */
+    pauseOperations() {
+        console.log('Pausing operations (page hidden)');
+        
+        // Pause any auto-save operations
+        if (annotationManager && typeof annotationManager.pauseAutoSave === 'function') {
+            annotationManager.pauseAutoSave();
+        }
+        
+        // Pause image preloading
+        if (imageManager && typeof imageManager.pausePreloading === 'function') {
+            imageManager.pausePreloading();
+        }
+    }
+
+    /**
+     * Resume operations when page becomes visible
+     */
+    resumeOperations() {
+        console.log('Resuming operations (page visible)');
+        
+        // Resume auto-save operations
+        if (annotationManager && typeof annotationManager.resumeAutoSave === 'function') {
+            annotationManager.resumeAutoSave();
+        }
+        
+        // Resume image preloading
+        if (imageManager && typeof imageManager.resumePreloading === 'function') {
+            imageManager.resumePreloading();
+        }
+    }
+
+    /**
+     * Check memory usage and optimize if needed
+     */
+    checkMemoryUsage() {
+        if ('memory' in performance) {
+            const memInfo = performance.memory;
+            const usedMB = memInfo.usedJSHeapSize / 1024 / 1024;
+            const limitMB = memInfo.jsHeapSizeLimit / 1024 / 1024;
+            const usagePercent = (usedMB / limitMB) * 100;
+            
+            console.log(`Memory usage: ${usedMB.toFixed(1)}MB / ${limitMB.toFixed(1)}MB (${usagePercent.toFixed(1)}%)`);
+            
+            // If memory usage is high, trigger cleanup
+            if (usagePercent > 80) {
+                console.warn('High memory usage detected, triggering optimization');
+                this.optimizeMemoryUsage();
+            }
+        }
+    }
+
+    /**
+     * Optimize memory usage by cleaning up cached data
+     */
+    optimizeMemoryUsage() {
+        console.log('Optimizing memory usage...');
+        
+        try {
+            // Clear image cache in image manager
+            if (imageManager && typeof imageManager.clearCache === 'function') {
+                imageManager.clearCache();
+            }
+            
+            // Clear annotation history beyond a certain limit
+            if (annotationManager && typeof annotationManager.trimHistory === 'function') {
+                annotationManager.trimHistory(100); // Keep only last 100 history entries
+            }
+            
+            // Clear canvas cache
+            if (this.canvasRenderer && typeof this.canvasRenderer.clearCache === 'function') {
+                this.canvasRenderer.clearCache();
+            }
+            
+            // Force garbage collection if available
+            if (window.gc) {
+                window.gc();
+            }
+            
+            console.log('Memory optimization completed');
+            
+        } catch (error) {
+            console.error('Error during memory optimization:', error);
+            errorLogger.logError('Memory optimization failed', {
+                type: 'memory_error'
+            }, error);
+        }
+    }
+
+    /**
+     * Performance monitoring and optimization for large image sets
+     */
+    initializePerformanceMonitoring() {
+        // Monitor frame rate for smooth interactions
+        let frameCount = 0;
+        let lastTime = performance.now();
+        
+        const monitorFrameRate = () => {
+            frameCount++;
+            const currentTime = performance.now();
+            
+            if (currentTime - lastTime >= 1000) {
+                const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                
+                if (fps < 30) {
+                    console.warn(`Low frame rate detected: ${fps} FPS`);
+                    this.optimizePerformance();
+                }
+                
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            requestAnimationFrame(monitorFrameRate);
+        };
+        
+        requestAnimationFrame(monitorFrameRate);
+        
+        // Monitor long tasks
+        if ('PerformanceObserver' in window) {
+            try {
+                const observer = new PerformanceObserver((list) => {
+                    for (const entry of list.getEntries()) {
+                        if (entry.duration > 50) {
+                            console.warn(`Long task detected: ${entry.duration.toFixed(2)}ms`);
+                            this.optimizePerformance();
+                        }
+                    }
+                });
+                observer.observe({ entryTypes: ['longtask'] });
+            } catch (error) {
+                console.log('Long task monitoring not supported');
+            }
+        }
+        
+        // Monitor layout shifts
+        if ('PerformanceObserver' in window) {
+            try {
+                const observer = new PerformanceObserver((list) => {
+                    for (const entry of list.getEntries()) {
+                        if (entry.value > 0.1) {
+                            console.warn(`Layout shift detected: ${entry.value.toFixed(3)}`);
+                        }
+                    }
+                });
+                observer.observe({ entryTypes: ['layout-shift'] });
+            } catch (error) {
+                console.log('Layout shift monitoring not supported');
+            }
+        }
+    }
+
+    /**
+     * Optimize performance when issues are detected
+     */
+    optimizePerformance() {
+        console.log('Optimizing performance...');
+        
+        try {
+            // Reduce canvas rendering quality temporarily
+            if (this.canvasRenderer && typeof this.canvasRenderer.setQuality === 'function') {
+                this.canvasRenderer.setQuality('performance');
+            }
+            
+            // Disable non-essential animations
+            document.body.classList.add('performance-mode');
+            
+            // Throttle resize events more aggressively
+            if (this.resizeTimeout) {
+                clearTimeout(this.resizeTimeout);
+            }
+            this.resizeTimeout = setTimeout(() => {
+                if (this.canvasRenderer) {
+                    this.canvasRenderer.resizeCanvas();
+                }
+                // Restore quality after resize
+                if (this.canvasRenderer && typeof this.canvasRenderer.setQuality === 'function') {
+                    this.canvasRenderer.setQuality('high');
+                }
+                document.body.classList.remove('performance-mode');
+            }, 500);
+            
+            // Clear memory
+            this.optimizeMemoryUsage();
+            
+            console.log('Performance optimization completed');
+            
+        } catch (error) {
+            console.error('Error during performance optimization:', error);
+            errorLogger.logError('Performance optimization failed', {
+                type: 'performance_error'
+            }, error);
+        }
+    }
+
+    /**
+     * Initialize accessibility features
+     */
+    initializeAccessibilityFeatures() {
+        console.log('Initializing accessibility features...');
+        
+        // Set up focus management
+        this.setupFocusManagement();
+        
+        // Set up ARIA live regions
+        this.setupAriaLiveRegions();
+        
+        // Set up keyboard navigation
+        this.setupKeyboardNavigation();
+        
+        // Set up screen reader announcements
+        this.setupScreenReaderSupport();
+        
+        console.log('Accessibility features initialized');
+    }
+
+    /**
+     * Set up focus management for keyboard navigation
+     */
+    setupFocusManagement() {
+        // Ensure canvas is focusable
+        if (this.canvas) {
+            this.canvas.setAttribute('tabindex', '0');
+            
+            // Add focus indicators
+            this.canvas.addEventListener('focus', () => {
+                this.canvas.classList.add('focused');
+                this.announceToScreenReader('Canvas focused. Use Tab to navigate annotations, arrow keys to move selected annotation.');
+            });
+            
+            this.canvas.addEventListener('blur', () => {
+                this.canvas.classList.remove('focused');
+            });
+        }
+        
+        // Set up focus trap for modals
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Tab') {
+                const modal = document.querySelector('.modal.show');
+                if (modal) {
+                    this.trapFocusInModal(event, modal);
+                }
+            }
+        });
+    }
+
+    /**
+     * Trap focus within modal dialogs
+     */
+    trapFocusInModal(event, modal) {
+        const focusableElements = modal.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        
+        if (event.shiftKey) {
+            if (document.activeElement === firstElement) {
+                event.preventDefault();
+                lastElement.focus();
+            }
+        } else {
+            if (document.activeElement === lastElement) {
+                event.preventDefault();
+                firstElement.focus();
+            }
+        }
+    }
+
+    /**
+     * Set up ARIA live regions for dynamic content
+     */
+    setupAriaLiveRegions() {
+        // Create status live region if it doesn't exist
+        if (!document.getElementById('status-live-region')) {
+            const statusRegion = document.createElement('div');
+            statusRegion.id = 'status-live-region';
+            statusRegion.setAttribute('aria-live', 'polite');
+            statusRegion.setAttribute('aria-atomic', 'true');
+            statusRegion.className = 'visually-hidden';
+            document.body.appendChild(statusRegion);
+        }
+        
+        // Create alert live region for urgent messages
+        if (!document.getElementById('alert-live-region')) {
+            const alertRegion = document.createElement('div');
+            alertRegion.id = 'alert-live-region';
+            alertRegion.setAttribute('aria-live', 'assertive');
+            alertRegion.setAttribute('aria-atomic', 'true');
+            alertRegion.className = 'visually-hidden';
+            document.body.appendChild(alertRegion);
+        }
+    }
+
+    /**
+     * Set up keyboard navigation
+     */
+    setupKeyboardNavigation() {
+        // Add keyboard event listeners
+        document.addEventListener('keydown', (event) => {
+            this.handleKeyboardShortcuts(event);
+        });
+        
+        // Set up roving tabindex for annotation navigation
+        if (this.canvas) {
+            this.canvas.addEventListener('keydown', (event) => {
+                this.handleCanvasKeyboardNavigation(event);
+            });
+        }
+    }
+
+    /**
+     * Set up screen reader support
+     */
+    setupScreenReaderSupport() {
+        // Update image counter with screen reader friendly format
+        const updateImageCounterAccessible = (current, total) => {
+            if (this.imageCounter) {
+                this.imageCounter.textContent = `${current} / ${total}`;
+                this.imageCounter.setAttribute('aria-label', `Image ${current} of ${total}`);
+            }
+        };
+        
+        // Override the existing updateImageCounter method
+        const originalUpdateImageCounter = this.updateImageCounter.bind(this);
+        this.updateImageCounter = (current, total) => {
+            originalUpdateImageCounter(current, total);
+            updateImageCounterAccessible(current, total);
+        };
+        
+        // Add descriptions to annotation counts
+        const updateAnnotationCountsAccessible = () => {
+            if (this.suggestedCount) {
+                const count = this.suggestedCount.textContent;
+                this.suggestedCount.setAttribute('aria-label', `${count} suggested annotations`);
+            }
+            if (this.verifiedCount) {
+                const count = this.verifiedCount.textContent;
+                this.verifiedCount.setAttribute('aria-label', `${count} verified annotations`);
+            }
+            if (this.modifiedCount) {
+                const count = this.modifiedCount.textContent;
+                this.modifiedCount.setAttribute('aria-label', `${count} modified annotations`);
+            }
+            if (this.rejectedCount) {
+                const count = this.rejectedCount.textContent;
+                this.rejectedCount.setAttribute('aria-label', `${count} rejected annotations`);
+            }
+        };
+        
+        // Override the existing updateAnnotationCounts method
+        const originalUpdateAnnotationCounts = this.updateAnnotationCounts.bind(this);
+        this.updateAnnotationCounts = () => {
+            originalUpdateAnnotationCounts();
+            updateAnnotationCountsAccessible();
+        };
     }
 
     /**
@@ -761,15 +1286,21 @@ class App {
             }
         }
         
-        // Update button states
+        // Update button states with proper ARIA attributes
         if (enabled) {
             this.drawBtn?.classList.add('active');
+            this.drawBtn?.setAttribute('aria-pressed', 'true');
             this.selectBtn?.classList.remove('active');
+            this.selectBtn?.setAttribute('aria-pressed', 'false');
             this.roiBtn?.classList.remove('active');
+            this.roiBtn?.setAttribute('aria-pressed', 'false');
         } else {
             this.drawBtn?.classList.remove('active');
+            this.drawBtn?.setAttribute('aria-pressed', 'false');
             this.selectBtn?.classList.add('active');
+            this.selectBtn?.setAttribute('aria-pressed', 'true');
             this.roiBtn?.classList.remove('active');
+            this.roiBtn?.setAttribute('aria-pressed', 'false');
         }
         
         console.log(`Drawing mode ${enabled ? 'enabled' : 'disabled'}`);
@@ -813,11 +1344,16 @@ class App {
             if (this.drawingTools.roiMode) {
                 this.drawingTools.disableROIMode();
                 this.roiBtn?.classList.remove('active');
+                this.roiBtn?.setAttribute('aria-pressed', 'false');
             } else {
                 // Disable other modes first
                 this.setDrawingMode(false);
                 this.drawingTools.enableROIMode();
                 this.roiBtn?.classList.add('active');
+                this.roiBtn?.setAttribute('aria-pressed', 'true');
+                // Update other buttons
+                this.drawBtn?.setAttribute('aria-pressed', 'false');
+                this.selectBtn?.setAttribute('aria-pressed', 'false');
             }
         }
         console.log('ROI mode toggled');
@@ -1093,15 +1629,23 @@ class App {
             return;
         }
 
+        // Handle canvas focus for accessibility
+        if (event.target === this.canvas) {
+            this.handleCanvasKeyboardNavigation(event);
+            return;
+        }
+
         switch (event.code) {
             case CONFIG.KEYBOARD_SHORTCUTS.NEXT_IMAGE:
                 event.preventDefault();
                 this.nextImage();
+                this.announceToScreenReader(`Navigating to next image`);
                 break;
                 
             case CONFIG.KEYBOARD_SHORTCUTS.PREV_IMAGE:
                 event.preventDefault();
                 this.previousImage();
+                this.announceToScreenReader(`Navigating to previous image`);
                 break;
                 
             case CONFIG.KEYBOARD_SHORTCUTS.SAVE:
@@ -1110,9 +1654,11 @@ class App {
                     if (event.shiftKey) {
                         // Ctrl+Shift+S for manual save
                         this.manualSave();
+                        this.announceToScreenReader(`Manual save initiated`);
                     } else {
                         // Ctrl+S for regular save
                         this.saveAnnotations();
+                        this.announceToScreenReader(`Save initiated`);
                     }
                 }
                 break;
@@ -1120,11 +1666,19 @@ class App {
             case CONFIG.KEYBOARD_SHORTCUTS.DRAW_MODE:
                 event.preventDefault();
                 this.setDrawingMode(true);
+                this.announceToScreenReader(`Drawing mode enabled`);
                 break;
                 
             case CONFIG.KEYBOARD_SHORTCUTS.SELECT_MODE:
                 event.preventDefault();
                 this.setDrawingMode(false);
+                this.announceToScreenReader(`Selection mode enabled`);
+                break;
+                
+            case 'KeyR':
+                event.preventDefault();
+                this.toggleROIMode();
+                this.announceToScreenReader(`ROI mode toggled`);
                 break;
                 
             case CONFIG.KEYBOARD_SHORTCUTS.ESCAPE:
@@ -1132,12 +1686,14 @@ class App {
                 this.setDrawingMode(false);
                 // Also hide any status banners
                 statusBanner.hide();
+                this.announceToScreenReader(`Action cancelled`);
                 break;
                 
             // Additional navigation shortcuts
             case 'Home':
                 event.preventDefault();
                 this.goToImage(0);
+                this.announceToScreenReader(`Navigating to first image`);
                 break;
                 
             case 'End':
@@ -1145,6 +1701,7 @@ class App {
                 const lastIndex = imageManager.getImageCount() - 1;
                 if (lastIndex >= 0) {
                     this.goToImage(lastIndex);
+                    this.announceToScreenReader(`Navigating to last image`);
                 }
                 break;
                 
@@ -1164,9 +1721,231 @@ class App {
                     const targetIndex = digit - 1;
                     if (targetIndex < imageManager.getImageCount()) {
                         this.goToImage(targetIndex);
+                        this.announceToScreenReader(`Navigating to image ${digit}`);
                     }
                 }
                 break;
+                
+            // Annotation state shortcuts
+            case 'KeyV':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.verifySelectedAnnotation();
+                }
+                break;
+                
+            case 'KeyR':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.rejectSelectedAnnotation();
+                }
+                break;
+                
+            case 'KeyM':
+                if (event.ctrlKey || event.metaKey) {
+                    event.preventDefault();
+                    this.markSelectedAnnotationAsModified();
+                }
+                break;
+                
+            case 'Delete':
+            case 'Backspace':
+                event.preventDefault();
+                this.deleteSelectedAnnotation();
+                break;
+        }
+    }
+
+    /**
+     * Handle keyboard navigation when canvas is focused
+     */
+    handleCanvasKeyboardNavigation(event) {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        
+        switch (event.code) {
+            case 'Tab':
+                // Tab through annotations
+                event.preventDefault();
+                if (event.shiftKey) {
+                    this.selectPreviousAnnotation();
+                } else {
+                    this.selectNextAnnotation();
+                }
+                break;
+                
+            case 'Enter':
+            case 'Space':
+                // Activate selected annotation for editing
+                event.preventDefault();
+                if (selectedAnnotation) {
+                    this.editSelectedAnnotation();
+                }
+                break;
+                
+            case 'ArrowUp':
+            case 'ArrowDown':
+            case 'ArrowLeft':
+            case 'ArrowRight':
+                // Move selected annotation with arrow keys
+                event.preventDefault();
+                if (selectedAnnotation) {
+                    this.moveSelectedAnnotation(event.code);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Announce messages to screen readers
+     */
+    announceToScreenReader(message) {
+        // Create or update ARIA live region
+        let liveRegion = document.getElementById('aria-live-region');
+        if (!liveRegion) {
+            liveRegion = document.createElement('div');
+            liveRegion.id = 'aria-live-region';
+            liveRegion.setAttribute('aria-live', 'polite');
+            liveRegion.setAttribute('aria-atomic', 'true');
+            liveRegion.className = 'visually-hidden';
+            document.body.appendChild(liveRegion);
+        }
+        
+        // Clear and set new message
+        liveRegion.textContent = '';
+        setTimeout(() => {
+            liveRegion.textContent = message;
+        }, 100);
+    }
+
+    /**
+     * Accessibility helper methods for annotation management
+     */
+    verifySelectedAnnotation() {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation) {
+            const success = annotationManager.updateAnnotation(selectedAnnotation.id, {
+                state: 'Verified'
+            });
+            if (success) {
+                this.announceToScreenReader(`Annotation verified`);
+            }
+        }
+    }
+
+    rejectSelectedAnnotation() {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation) {
+            const success = annotationManager.updateAnnotation(selectedAnnotation.id, {
+                state: 'Rejected'
+            });
+            if (success) {
+                this.announceToScreenReader(`Annotation rejected`);
+            }
+        }
+    }
+
+    markSelectedAnnotationAsModified() {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation) {
+            const success = annotationManager.updateAnnotation(selectedAnnotation.id, {
+                state: 'Modified'
+            });
+            if (success) {
+                this.announceToScreenReader(`Annotation marked as modified`);
+            }
+        }
+    }
+
+    deleteSelectedAnnotation() {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation) {
+            const success = annotationManager.deleteAnnotation(selectedAnnotation.id);
+            if (success) {
+                this.announceToScreenReader(`Annotation deleted`);
+            }
+        }
+    }
+
+    selectNextAnnotation() {
+        const annotations = annotationManager.getCurrentAnnotations();
+        const currentSelected = annotationManager.getSelectedAnnotation();
+        
+        if (annotations.length === 0) return;
+        
+        let nextIndex = 0;
+        if (currentSelected) {
+            const currentIndex = annotations.findIndex(ann => ann.id === currentSelected.id);
+            nextIndex = (currentIndex + 1) % annotations.length;
+        }
+        
+        const nextAnnotation = annotations[nextIndex];
+        if (nextAnnotation) {
+            annotationManager.selectAnnotation(nextAnnotation.id);
+            this.announceToScreenReader(`Selected annotation ${nextIndex + 1} of ${annotations.length}: ${nextAnnotation.className}`);
+        }
+    }
+
+    selectPreviousAnnotation() {
+        const annotations = annotationManager.getCurrentAnnotations();
+        const currentSelected = annotationManager.getSelectedAnnotation();
+        
+        if (annotations.length === 0) return;
+        
+        let prevIndex = annotations.length - 1;
+        if (currentSelected) {
+            const currentIndex = annotations.findIndex(ann => ann.id === currentSelected.id);
+            prevIndex = currentIndex > 0 ? currentIndex - 1 : annotations.length - 1;
+        }
+        
+        const prevAnnotation = annotations[prevIndex];
+        if (prevAnnotation) {
+            annotationManager.selectAnnotation(prevAnnotation.id);
+            this.announceToScreenReader(`Selected annotation ${prevIndex + 1} of ${annotations.length}: ${prevAnnotation.className}`);
+        }
+    }
+
+    editSelectedAnnotation() {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (selectedAnnotation && this.drawingTools) {
+            this.drawingTools.startEditingAnnotation(selectedAnnotation.id);
+            this.announceToScreenReader(`Editing annotation: ${selectedAnnotation.className}`);
+        }
+    }
+
+    moveSelectedAnnotation(direction) {
+        const selectedAnnotation = annotationManager.getSelectedAnnotation();
+        if (!selectedAnnotation) return;
+        
+        const moveDistance = 5; // pixels
+        let deltaX = 0, deltaY = 0;
+        
+        switch (direction) {
+            case 'ArrowUp':
+                deltaY = -moveDistance;
+                break;
+            case 'ArrowDown':
+                deltaY = moveDistance;
+                break;
+            case 'ArrowLeft':
+                deltaX = -moveDistance;
+                break;
+            case 'ArrowRight':
+                deltaX = moveDistance;
+                break;
+        }
+        
+        const newBbox = {
+            ...selectedAnnotation.bbox,
+            x: selectedAnnotation.bbox.x + deltaX,
+            y: selectedAnnotation.bbox.y + deltaY
+        };
+        
+        const success = annotationManager.updateAnnotation(selectedAnnotation.id, {
+            bbox: newBbox
+        });
+        
+        if (success) {
+            this.announceToScreenReader(`Moved annotation ${direction.replace('Arrow', '').toLowerCase()}`);
         }
     }
 
@@ -1284,8 +2063,101 @@ class App {
     }
 
     /**
-     * ROI Manager Callback Methods
+     * Drawing Tools Callback Methods
      */
+    onAnnotationCreated(annotation) {
+        console.log(`New annotation created: ${annotation.id} (${annotation.className})`);
+        
+        // Update annotation counts
+        this.updateAnnotationCounts();
+        
+        // Trigger canvas redraw to show new annotation
+        if (this.canvasRenderer) {
+            this.canvasRenderer.redraw();
+        }
+        
+        // Auto-save if enabled
+        if (CONFIG.UI.AUTO_SAVE_DELAY > 0) {
+            this.scheduleAutoSave();
+        }
+    }
+
+    onAnnotationUpdated(annotation) {
+        console.log(`Annotation updated: ${annotation.id} (${annotation.className})`);
+        
+        // Update annotation counts
+        this.updateAnnotationCounts();
+        
+        // Trigger canvas redraw to show updated annotation
+        if (this.canvasRenderer) {
+            this.canvasRenderer.redraw();
+        }
+        
+        // Auto-save if enabled
+        if (CONFIG.UI.AUTO_SAVE_DELAY > 0) {
+            this.scheduleAutoSave();
+        }
+    }
+
+    onAnnotationDeleted(annotationId) {
+        console.log(`Annotation deleted: ${annotationId}`);
+        
+        // Update annotation counts
+        this.updateAnnotationCounts();
+        
+        // Trigger canvas redraw to remove deleted annotation
+        if (this.canvasRenderer) {
+            this.canvasRenderer.redraw();
+        }
+        
+        // Auto-save if enabled
+        if (CONFIG.UI.AUTO_SAVE_DELAY > 0) {
+            this.scheduleAutoSave();
+        }
+    }
+
+    /**
+     * Schedule auto-save with debouncing
+     */
+    scheduleAutoSave() {
+        // Clear existing auto-save timeout
+        if (this.autoSaveTimeout) {
+            clearTimeout(this.autoSaveTimeout);
+        }
+        
+        // Schedule new auto-save
+        this.autoSaveTimeout = setTimeout(() => {
+            this.performAutoSave();
+        }, CONFIG.UI.AUTO_SAVE_DELAY);
+    }
+
+    /**
+     * Perform auto-save operation
+     */
+    async performAutoSave() {
+        try {
+            console.log('Performing auto-save...');
+            
+            const result = await annotationManager.saveAnnotations();
+            
+            if (result.success) {
+                console.log(`Auto-save completed: ${result.savedCount} annotations saved`);
+                // Show subtle success indicator
+                loadingManager.showSuccess('Auto-saved', { 
+                    type: 'info', 
+                    duration: 1000 
+                });
+            } else {
+                console.warn('Auto-save failed:', result.errors);
+            }
+            
+        } catch (error) {
+            console.error('Auto-save error:', error);
+            errorLogger.logError('Auto-save operation failed', {
+                type: 'autosave_error'
+            }, error);
+        }
+    }
     onROIChanged(roi) {
         console.log('ROI changed:', roi ? `${roi.polygon.length} points` : 'cleared');
         

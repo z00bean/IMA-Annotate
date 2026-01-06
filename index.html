@@ -3,134 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMA Annotate Frontend</title>
+    <title>IMA Annotate Frontend - Interactive Model-Assisted Annotation Tool</title>
+    <meta name="description" content="Browser-based annotation interface for transportation vision datasets with AI-assisted annotation verification">
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+    <!-- Skip to main content link for screen readers -->
+    <a href="#main-content" class="visually-hidden-focusable">Skip to main content</a>
+    
     <!-- Status Banner -->
-    <div id="status-banner" class="alert alert-warning alert-dismissible fade show d-none" role="alert">
+    <div id="status-banner" class="alert alert-warning alert-dismissible fade show d-none" role="alert" aria-live="polite" aria-atomic="true">
         <span id="status-message"></span>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close status message"></button>
     </div>
 
     <!-- Main Container -->
     <div class="container-fluid">
         <!-- Header -->
-        <header class="row bg-primary text-white py-3 mb-4">
+        <header class="row bg-primary text-white py-3 mb-4" role="banner">
             <div class="col">
                 <h1 class="h3 mb-0">IMA Annotate Frontend</h1>
-                <p class="mb-0 small">Interactive Model-Assisted Annotation Tool</p>
+                <p class="mb-0 small">Interactive Model-Assisted Annotation Tool for Transportation Vision Datasets</p>
+                
+                <!-- Connection Status Indicators -->
+                <div class="mt-2 d-flex gap-2 align-items-center">
+                    <span id="mode-indicator" class="badge bg-warning" title="Current operation mode">Sample Mode</span>
+                    <span id="connection-status" class="badge bg-secondary" title="Connection status">Offline</span>
+                </div>
             </div>
         </header>
 
         <!-- Main Content -->
-        <main class="row">
+        <main class="row" id="main-content" role="main">
             <!-- Toolbar -->
             <div class="col-12 mb-3">
-                <div class="toolbar bg-light p-3 rounded">
+                <nav class="toolbar bg-light p-3 rounded" role="toolbar" aria-label="Annotation tools">
                     <div class="row align-items-center">
                         <!-- Navigation Controls -->
                         <div class="col-md-4">
-                            <div class="btn-group" role="group" aria-label="Navigation">
-                                <button type="button" id="prev-btn" class="btn btn-outline-primary">
-                                    <i class="bi bi-chevron-left"></i> Previous
+                            <div class="btn-group" role="group" aria-label="Image navigation">
+                                <button type="button" id="prev-btn" class="btn btn-outline-primary" 
+                                        aria-label="Go to previous image" title="Previous image (Left arrow)">
+                                    <i class="bi bi-chevron-left" aria-hidden="true"></i> Previous
                                 </button>
-                                <button type="button" id="next-btn" class="btn btn-outline-primary">
-                                    Next <i class="bi bi-chevron-right"></i>
+                                <button type="button" id="next-btn" class="btn btn-outline-primary" 
+                                        aria-label="Go to next image" title="Next image (Right arrow)">
+                                    Next <i class="bi bi-chevron-right" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <span id="image-counter" class="ms-3 text-muted">0 / 0</span>
+                            <span id="image-counter" class="ms-3 text-muted" aria-live="polite" aria-label="Image position">0 / 0</span>
                         </div>
 
                         <!-- Drawing Tools -->
                         <div class="col-md-4 text-center">
-                            <div class="btn-group" role="group" aria-label="Drawing Tools">
-                                <button type="button" id="draw-btn" class="btn btn-outline-success">
-                                    <i class="bi bi-pencil"></i> Draw
+                            <div class="btn-group" role="group" aria-label="Drawing and selection tools">
+                                <button type="button" id="draw-btn" class="btn btn-outline-success" 
+                                        aria-label="Enable drawing mode" title="Draw new annotations (D key)"
+                                        aria-pressed="false">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i> Draw
                                 </button>
-                                <button type="button" id="select-btn" class="btn btn-outline-info active">
-                                    <i class="bi bi-cursor"></i> Select
+                                <button type="button" id="select-btn" class="btn btn-outline-info active" 
+                                        aria-label="Enable selection mode" title="Select and edit annotations (V key)"
+                                        aria-pressed="true">
+                                    <i class="bi bi-cursor" aria-hidden="true"></i> Select
                                 </button>
-                                <button type="button" id="roi-btn" class="btn btn-outline-warning">
-                                    <i class="bi bi-bounding-box"></i> ROI
+                                <button type="button" id="roi-btn" class="btn btn-outline-warning" 
+                                        aria-label="Enable region of interest mode" title="Define region of interest (R key)"
+                                        aria-pressed="false">
+                                    <i class="bi bi-bounding-box" aria-hidden="true"></i> ROI
                                 </button>
                             </div>
                         </div>
 
                         <!-- Actions -->
                         <div class="col-md-4 text-end">
-                            <div class="btn-group" role="group" aria-label="Actions">
-                                <button type="button" id="save-btn" class="btn btn-outline-secondary">
-                                    <i class="bi bi-save"></i> Save
+                            <div class="btn-group" role="group" aria-label="Save and export actions">
+                                <button type="button" id="save-btn" class="btn btn-outline-secondary" 
+                                        aria-label="Save annotations" title="Save annotations (Ctrl+S)">
+                                    <i class="bi bi-save" aria-hidden="true"></i> Save
                                 </button>
-                                <button type="button" id="manual-save-btn" class="btn btn-outline-secondary" title="Manual Save (Ctrl+Shift+S)">
-                                    <i class="bi bi-save-fill"></i> Manual Save
+                                <button type="button" id="manual-save-btn" class="btn btn-outline-secondary" 
+                                        aria-label="Manual save annotations" title="Manual Save (Ctrl+Shift+S)">
+                                    <i class="bi bi-save-fill" aria-hidden="true"></i> Manual Save
                                 </button>
-                                <button type="button" id="export-btn" class="btn btn-outline-dark">
-                                    <i class="bi bi-download"></i> Export
+                                <button type="button" id="export-btn" class="btn btn-outline-dark" 
+                                        aria-label="Export annotations" title="Export annotations to file">
+                                    <i class="bi bi-download" aria-hidden="true"></i> Export
+                                </button>
+                                <button type="button" id="reconnect-btn" class="btn btn-outline-primary d-none" 
+                                        aria-label="Reconnect to API" title="Attempt to reconnect to API">
+                                    <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Reconnect
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </nav>
             </div>
 
             <!-- Canvas Area -->
             <div class="col-lg-9">
-                <div class="canvas-container bg-white border rounded p-3">
-                    <div id="loading-indicator" class="text-center py-5 d-none">
-                        <div class="spinner-border text-primary" role="status">
+                <section class="canvas-container bg-white border rounded p-3" role="img" aria-label="Image annotation workspace">
+                    <div id="loading-indicator" class="text-center py-5 d-none" role="status" aria-live="polite">
+                        <div class="spinner-border text-primary" role="status" aria-hidden="true">
                             <span class="visually-hidden">Loading...</span>
                         </div>
                         <p class="mt-2 text-muted">Loading image...</p>
                     </div>
-                    <canvas id="annotation-canvas" class="border"></canvas>
-                </div>
+                    <canvas id="annotation-canvas" class="border" 
+                            role="img" 
+                            aria-label="Image with annotations - use drawing tools to create and edit annotations"
+                            tabindex="0">
+                        Your browser does not support the HTML5 canvas element required for annotation.
+                    </canvas>
+                </section>
             </div>
 
             <!-- Sidebar -->
-            <div class="col-lg-3">
+            <aside class="col-lg-3" role="complementary" aria-label="Annotation controls and information">
                 <!-- Annotation Summary -->
-                <div class="card mb-3">
+                <section class="card mb-3">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Annotation Summary</h5>
+                        <h2 class="card-title mb-0 h5">Annotation Summary</h2>
                     </div>
                     <div class="card-body">
-                        <div class="row text-center">
+                        <div class="row text-center" role="group" aria-label="Annotation counts by status">
                             <div class="col-6">
-                                <div class="badge bg-warning text-dark">Suggested</div>
-                                <div id="suggested-count" class="h4">0</div>
+                                <div class="badge bg-warning text-dark" aria-hidden="true">Suggested</div>
+                                <div id="suggested-count" class="h4" aria-label="Suggested annotations count">0</div>
                             </div>
                             <div class="col-6">
-                                <div class="badge bg-success">Verified</div>
-                                <div id="verified-count" class="h4">0</div>
+                                <div class="badge bg-success" aria-hidden="true">Verified</div>
+                                <div id="verified-count" class="h4" aria-label="Verified annotations count">0</div>
                             </div>
                         </div>
                         <div class="row text-center mt-2">
                             <div class="col-6">
-                                <div class="badge bg-info">Modified</div>
-                                <div id="modified-count" class="h4">0</div>
+                                <div class="badge bg-info" aria-hidden="true">Modified</div>
+                                <div id="modified-count" class="h4" aria-label="Modified annotations count">0</div>
                             </div>
                             <div class="col-6">
-                                <div class="badge bg-danger">Rejected</div>
-                                <div id="rejected-count" class="h4">0</div>
+                                <div class="badge bg-danger" aria-hidden="true">Rejected</div>
+                                <div id="rejected-count" class="h4" aria-label="Rejected annotations count">0</div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
 
                 <!-- Class Selection -->
-                <div class="card mb-3">
+                <section class="card mb-3">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Object Classes</h5>
+                        <h2 class="card-title mb-0 h5">Object Classes</h2>
                     </div>
                     <div class="card-body">
-                        <select id="class-selector" class="form-select">
+                        <label for="class-selector" class="form-label visually-hidden">Select object class for new annotations</label>
+                        <select id="class-selector" class="form-select" aria-label="Object class selection">
                             <option value="Car">Car</option>
                             <option value="Truck">Truck</option>
                             <option value="Bus">Bus</option>
@@ -140,58 +174,68 @@
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                </div>
+                </section>
 
                 <!-- ROI Controls -->
-                <div class="card">
+                <section class="card mb-3">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Region of Interest</h5>
+                        <h2 class="card-title mb-0 h5">Region of Interest</h2>
                     </div>
                     <div class="card-body">
                         <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" id="roi-toggle">
+                            <input class="form-check-input" type="checkbox" id="roi-toggle" 
+                                   aria-describedby="roi-help">
                             <label class="form-check-label" for="roi-toggle">
                                 Enable ROI Filtering
                             </label>
                         </div>
-                        <button type="button" id="clear-roi-btn" class="btn btn-outline-danger btn-sm">
-                            Clear ROI
+                        <div id="roi-help" class="form-text mb-2">
+                            When enabled, only annotations within the defined region will be highlighted.
+                        </div>
+                        <button type="button" id="clear-roi-btn" class="btn btn-outline-danger btn-sm" 
+                                aria-label="Clear region of interest">
+                            <i class="bi bi-trash" aria-hidden="true"></i> Clear ROI
                         </button>
                     </div>
-                </div>
+                </section>
 
                 <!-- Keyboard Shortcuts Help -->
-                <div class="card mt-3">
+                <section class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Keyboard Shortcuts</h5>
+                        <h2 class="card-title mb-0 h5">Keyboard Shortcuts</h2>
                     </div>
                     <div class="card-body">
-                        <small class="text-muted">
-                            <strong>Navigation:</strong><br>
-                            ← → Arrow keys: Navigate images<br>
-                            <strong>Drawing:</strong><br>
-                            D: Draw mode, V: Select mode<br>
-                            <strong>Save & Export:</strong><br>
-                            Ctrl+S: Save, Ctrl+Shift+S: Manual Save<br>
-                            <strong>Selected Annotation:</strong><br>
-                            Delete: Remove annotation<br>
-                            Ctrl+V: Verify<br>
-                            Ctrl+R: Reject<br>
-                            Ctrl+M: Mark as Modified<br>
-                            Ctrl+E: Edit annotation<br>
-                            Double-click: Edit annotation
-                        </small>
+                        <dl class="small text-muted mb-0">
+                            <dt>Navigation:</dt>
+                            <dd>← → Arrow keys: Navigate images<br>
+                                Home/End: First/Last image<br>
+                                Ctrl+1-9: Jump to image</dd>
+                            
+                            <dt>Drawing:</dt>
+                            <dd>D: Draw mode<br>
+                                V: Select mode<br>
+                                R: ROI mode<br>
+                                Esc: Cancel current action</dd>
+                            
+                            <dt>Save & Export:</dt>
+                            <dd>Ctrl+S: Save<br>
+                                Ctrl+Shift+S: Manual Save</dd>
+                            
+                            <dt>Selected Annotation:</dt>
+                            <dd>Delete: Remove annotation<br>
+                                Ctrl+V: Verify<br>
+                                Ctrl+R: Reject<br>
+                                Ctrl+M: Mark as Modified<br>
+                                Double-click: Edit annotation</dd>
+                        </dl>
                     </div>
-                </div>
-            </div>
+                </section>
+            </aside>
         </main>
     </div>
 
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     
     <!-- Application JS Modules -->
     <script type="module" src="js/app.js"></script>
