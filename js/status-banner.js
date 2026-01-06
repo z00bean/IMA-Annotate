@@ -356,6 +356,53 @@ export class StatusBanner {
     }
 
     /**
+     * Show mode transition messages
+     */
+    showModeTransition(fromMode, toMode, message = '') {
+        const defaultMessage = `Switched from ${fromMode} mode to ${toMode} mode`;
+        const displayMessage = message || defaultMessage;
+        
+        const type = toMode === 'live' ? 'success' : 'info';
+        
+        this.show(
+            displayMessage,
+            type,
+            {
+                autoDismiss: true,
+                dismissDelay: 3000
+            }
+        );
+    }
+
+    /**
+     * Show reconnection attempt message
+     */
+    showReconnectionAttempt() {
+        this.show(
+            'Attempting to reconnect to API...',
+            'info',
+            {
+                autoDismiss: false,
+                persistent: true
+            }
+        );
+    }
+
+    /**
+     * Show sync progress message
+     */
+    showSyncProgress(message = 'Syncing data...') {
+        this.show(
+            message,
+            'info',
+            {
+                autoDismiss: false,
+                persistent: true
+            }
+        );
+    }
+
+    /**
      * Log message to console based on type
      */
     logMessage(message, type) {

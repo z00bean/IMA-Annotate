@@ -68,6 +68,9 @@ export const CONFIG = {
         PRELOAD_IMAGES: 2
     },
     
+    // Debug Configuration
+    DEBUG_MODE: false, // Set to true to enable debug logging
+    
     // Export Formats
     EXPORT_FORMATS: {
         YOLO: "yolo",

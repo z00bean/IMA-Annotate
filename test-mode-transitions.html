@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mode Transitions Test - IMA Annotate Frontend</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Status Banner -->
+        <div id="status-banner" class="alert alert-warning alert-dismissible fade show d-none" role="alert">
+            <span id="status-message">Status message will appear here</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+
+        <!-- Header with Mode Indicators -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h1>Mode Transitions Test</h1>
+                    <div class="d-flex gap-2">
+                        <span id="mode-indicator" class="badge bg-warning">Sample Mode</span>
+                        <span id="connection-status" class="badge bg-secondary">Offline</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode Transition Controls -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Mode Transition Controls</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex gap-2 mb-3">
+                            <button id="reconnect-btn" class="btn btn-primary">
+                                <i class="bi bi-arrow-clockwise"></i> Reconnect to API
+                            </button>
+                            <button id="sync-sample-data-btn" class="btn btn-warning">
+                                <i class="bi bi-cloud-upload"></i> Sync Sample Data
+                            </button>
+                            <button id="force-sample-mode-btn" class="btn btn-secondary">
+                                <i class="bi bi-laptop"></i> Force Sample Mode
+                            </button>
+                            <button id="test-connection-btn" class="btn btn-info">
+                                <i class="bi bi-wifi"></i> Test Connection
+                            </button>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Current Status</h6>
+                                <div id="status-info" class="small text-muted">
+                                    Loading status information...
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Sample Mode Info</h6>
+                                <div id="sample-mode-info" class="small text-muted">
+                                    Loading sample mode information...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Results -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Test Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="test-results" class="small">
+                            <p>Click the buttons above to test mode transitions.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="d-none position-fixed top-50 start-50 translate-middle">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Test Script -->
+    <script type="module">
+        import { apiClient } from './js/api-client.js';
+        import { statusBanner } from './js/status-banner.js';
+
+        // Test functions
+        async function testConnection() {
+            addTestResult('Testing API connection...');
+            const result = await apiClient.testConnection();
+            addTestResult(`Connection test result: ${JSON.stringify(result, null, 2)}`);
+            updateStatusInfo();
+        }
+
+        async function testReconnection() {
+            addTestResult('Testing reconnection...');
+            const result = await apiClient.reconnect();
+            addTestResult(`Reconnection result: ${JSON.stringify(result, null, 2)}`);
+            updateStatusInfo();
+            updateModeIndicators();
+        }
+
+        async function testSyncSampleData() {
+            addTestResult('Testing sample data sync...');
+            const result = await apiClient.syncSampleDataToLive();
+            addTestResult(`Sync result: ${JSON.stringify(result, null, 2)}`);
+        }
+
+        function testForceSampleMode() {
+            addTestResult('Forcing sample mode...');
+            const result = apiClient.forceSampleMode();
+            addTestResult(`Force sample mode result: ${JSON.stringify(result, null, 2)}`);
+            updateStatusInfo();
+            updateModeIndicators();
+        }
+
+        function updateStatusInfo() {
+            const status = apiClient.getConnectionStatus();
+            const transitionInfo = apiClient.getModeTransitionInfo();
+            
+            document.getElementById('status-info').innerHTML = `
+                <strong>Connection Status:</strong><br>
+                Connected: ${status.connected}<br>
+                Sample Mode: ${status.sampleMode}<br>
+                API Key: ${status.apiKey}<br>
+                Mode: ${status.mode}<br>
+                <br>
+                <strong>Transition Info:</strong><br>
+                Current Mode: ${transitionInfo.currentMode}<br>
+                Can Transition to Live: ${transitionInfo.canTransitionToLive}<br>
+                API Configured: ${transitionInfo.apiConfigured}<br>
+                Connection Status: ${transitionInfo.connectionStatus}
+            `;
+        }
+
+        function updateSampleModeInfo() {
+            const sampleInfo = apiClient.getSampleModeInfo();
+            
+            document.getElementById('sample-mode-info').innerHTML = `
+                <strong>Sample Mode:</strong><br>
+                Active: ${sampleInfo.active}<br>
+                Sample Images: ${sampleInfo.sampleImages.length}<br>
+                Available Classes: ${sampleInfo.availableClasses.length}<br>
+                Local Storage: ${sampleInfo.localStorageSupported}<br>
+                Persistence: ${sampleInfo.persistenceEnabled}
+            `;
+        }
+
+        function updateModeIndicators() {
+            const status = apiClient.getConnectionStatus();
+            const mode = status.mode;
+            
+            const modeIndicator = document.getElementById('mode-indicator');
+            const connectionStatus = document.getElementById('connection-status');
+            
+            if (modeIndicator) {
+                modeIndicator.textContent = mode === 'sample' ? 'Sample Mode' : 'Live Mode';
+                modeIndicator.className = `badge ${mode === 'sample' ? 'bg-warning' : 'bg-success'}`;
+            }
+            
+            if (connectionStatus) {
+                connectionStatus.textContent = mode === 'sample' ? 'Offline' : 'Online';
+                connectionStatus.className = `badge ${mode === 'sample' ? 'bg-secondary' : 'bg-primary'}`;
+            }
+        }
+
+        function addTestResult(message) {
+            const resultsDiv = document.getElementById('test-results');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsDiv.innerHTML += `<div class="mb-1"><strong>[${timestamp}]</strong> ${message}</div>`;
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        // Event listeners
+        document.getElementById('test-connection-btn').addEventListener('click', testConnection);
+        document.getElementById('reconnect-btn').addEventListener('click', testReconnection);
+        document.getElementById('sync-sample-data-btn').addEventListener('click', testSyncSampleData);
+        document.getElementById('force-sample-mode-btn').addEventListener('click', testForceSampleMode);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            addTestResult('Mode transitions test initialized');
+            updateStatusInfo();
+            updateSampleModeInfo();
+            updateModeIndicators();
+            
+            // Test initial connection
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>

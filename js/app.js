@@ -6,6 +6,8 @@
 import { CONFIG, validateConfig, isApiKeyConfigured } from '../config.js';
 import { apiClient } from './api-client.js';
 import { statusBanner } from './status-banner.js';
+import { loadingManager } from './loading-manager.js';
+import { errorLogger } from './error-logger.js';
 import { imageManager } from './image-manager.js';
 import { initializeCanvasRenderer } from './canvas-renderer.js';
 import { annotationManager } from './annotation-manager.js';
@@ -43,6 +45,10 @@ class App {
             const configValidation = validateConfig();
             if (!configValidation.isValid) {
                 console.error('Configuration validation failed:', configValidation.errors);
+                errorLogger.logError('Configuration validation failed', {
+                    type: 'config_error',
+                    errors: configValidation.errors
+                });
                 statusBanner.showError('Configuration errors detected. Check console for details.');
                 return;
             }
@@ -57,7 +63,10 @@ class App {
             this.initializeCanvas();
             
             // Show loading indicator
-            this.showLoadingIndicator();
+            loadingManager.showLoading('app-init', {
+                message: 'Initializing application...',
+                container: null
+            });
             
             // Test API connectivity
             await this.initializeApiConnection();
@@ -66,13 +75,18 @@ class App {
             await this.loadInitialData();
             
             // Hide loading indicator
-            this.hideLoadingIndicator();
+            loadingManager.hideLoading('app-init');
             
             this.initialized = true;
             console.log('Application initialized successfully');
             
         } catch (error) {
             console.error('Failed to initialize application:', error);
+            errorLogger.logError('Application initialization failed', {
+                type: 'initialization_error',
+                configValidation: validateConfig()
+            }, error);
+            loadingManager.hideLoading('app-init');
             statusBanner.showError('Failed to initialize application. Check console for details.');
         }
     }
@@ -141,6 +155,18 @@ class App {
         const manualSaveBtn = document.getElementById('manual-save-btn');
         if (manualSaveBtn) {
             manualSaveBtn.addEventListener('click', () => this.manualSave());
+        }
+        
+        // Add reconnect button if it exists
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        if (reconnectBtn) {
+            reconnectBtn.addEventListener('click', () => this.attemptReconnection());
+        }
+        
+        // Add sync sample data button if it exists
+        const syncBtn = document.getElementById('sync-sample-data-btn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', () => this.syncSampleDataToLive());
         }
         
         // ROI events
@@ -274,26 +300,228 @@ class App {
                 console.warn('API key not configured');
                 statusBanner.showWarning(CONFIG.ERROR_MESSAGES.INVALID_API_KEY);
                 this.state.apiConnected = false;
+                this.updateModeIndicators('sample', 'API key not configured');
                 return;
             }
 
             // Test API connection (will fail with dummy endpoints)
-            const isConnected = await apiClient.testConnection();
+            const result = await apiClient.testConnection();
             
-            if (isConnected) {
+            if (result.success) {
                 console.log('API connection successful');
                 this.state.apiConnected = true;
                 statusBanner.hide();
+                this.updateModeIndicators('live', 'Connected to API');
             } else {
                 console.warn('API connection failed - falling back to sample mode');
                 this.state.apiConnected = false;
-                statusBanner.showWarning(CONFIG.ERROR_MESSAGES.API_UNREACHABLE);
+                statusBanner.showSampleModeNotification();
+                this.updateModeIndicators('sample', result.message);
             }
             
         } catch (error) {
             console.error('API connection test failed:', error);
             this.state.apiConnected = false;
             statusBanner.showWarning(CONFIG.ERROR_MESSAGES.API_UNREACHABLE);
+            this.updateModeIndicators('sample', 'Connection failed');
+        }
+    }
+
+    /**
+     * Update UI indicators for current mode
+     */
+    updateModeIndicators(mode, message = '') {
+        // Update mode indicator in UI if it exists
+        const modeIndicator = document.getElementById('mode-indicator');
+        if (modeIndicator) {
+            modeIndicator.textContent = mode === 'sample' ? 'Sample Mode' : 'Live Mode';
+            modeIndicator.className = `badge ${mode === 'sample' ? 'bg-warning' : 'bg-success'}`;
+            modeIndicator.title = message;
+        }
+
+        // Update connection status indicator
+        const connectionStatus = document.getElementById('connection-status');
+        if (connectionStatus) {
+            connectionStatus.textContent = mode === 'sample' ? 'Offline' : 'Online';
+            connectionStatus.className = `badge ${mode === 'sample' ? 'bg-secondary' : 'bg-primary'}`;
+        }
+
+        // Update any mode-specific UI elements
+        this.updateModeSpecificUI(mode);
+        
+        console.log(`Mode indicators updated: ${mode} - ${message}`);
+    }
+
+    /**
+     * Update UI elements that are specific to the current mode
+     */
+    updateModeSpecificUI(mode) {
+        // Show/hide mode-specific buttons or features
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        if (reconnectBtn) {
+            reconnectBtn.style.display = mode === 'sample' ? 'inline-block' : 'none';
+        }
+
+        const syncBtn = document.getElementById('sync-sample-data-btn');
+        if (syncBtn) {
+            syncBtn.style.display = mode === 'sample' ? 'inline-block' : 'none';
+        }
+
+        // Update export options based on mode
+        const exportOptions = document.querySelectorAll('.export-option');
+        exportOptions.forEach(option => {
+            if (option.dataset.requiresApi === 'true') {
+                option.disabled = mode === 'sample';
+                option.title = mode === 'sample' ? 'Not available in sample mode' : '';
+            }
+        });
+    }
+
+    /**
+     * Attempt to reconnect to API and transition modes
+     */
+    async attemptReconnection() {
+        console.log('Attempting to reconnect to API...');
+        
+        try {
+            const result = await loadingManager.trackOperation(
+                'reconnect-api',
+                apiClient.reconnect(),
+                {
+                    loadingMessage: 'Attempting to reconnect to API...',
+                    successMessage: 'Successfully reconnected to API',
+                    errorMessage: 'Reconnection failed',
+                    showSuccess: false // We'll handle success message manually
+                }
+            );
+            
+            if (result.success && result.transitioned) {
+                // Successfully transitioned from sample to live mode
+                loadingManager.showSuccess(result.message, { type: 'success' });
+                this.state.apiConnected = true;
+                this.updateModeIndicators('live', 'Reconnected successfully');
+                
+                // Optionally offer to sync sample data
+                if (result.previousMode === 'sample') {
+                    this.offerSampleDataSync();
+                }
+                
+                // Reload current image data from API
+                await this.reloadCurrentImageData();
+                
+            } else if (result.success) {
+                // Was already connected
+                loadingManager.showSuccess(result.message, { type: 'info' });
+                this.updateModeIndicators('live', 'Already connected');
+            } else {
+                // Failed to reconnect
+                this.state.apiConnected = false;
+                this.updateModeIndicators('sample', 'Reconnection failed');
+            }
+            
+        } catch (error) {
+            console.error('Reconnection attempt failed:', error);
+            errorLogger.logError('API reconnection failed', {
+                type: 'api_error',
+                operation: 'reconnect'
+            }, error);
+            this.state.apiConnected = false;
+            this.updateModeIndicators('sample', 'Reconnection error');
+        }
+    }
+
+    /**
+     * Offer to sync sample data to live mode
+     */
+    offerSampleDataSync() {
+        const modalHtml = `
+            <div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="syncModalLabel">Sync Sample Data</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>You've successfully connected to the API. Would you like to sync your sample mode annotations to the live system?</p>
+                            <div class="alert alert-info">
+                                <small>Only modified and user-created annotations will be synced. Original suggested annotations will remain in sample mode only.</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Skip</button>
+                            <button type="button" class="btn btn-primary" id="confirmSync">Sync Data</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove existing modal if present
+        const existingModal = document.getElementById('syncModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add modal to DOM
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('syncModal'));
+        modal.show();
+
+        // Handle sync confirmation
+        document.getElementById('confirmSync').addEventListener('click', () => {
+            modal.hide();
+            this.syncSampleDataToLive();
+        });
+    }
+
+    /**
+     * Sync sample data to live mode
+     */
+    async syncSampleDataToLive() {
+        try {
+            const result = await loadingManager.trackOperation(
+                'sync-sample-data',
+                apiClient.syncSampleDataToLive(),
+                {
+                    loadingMessage: 'Syncing sample data to live mode...',
+                    successMessage: 'Sample data synced successfully',
+                    errorMessage: 'Failed to sync sample data'
+                }
+            );
+            
+            if (result.success) {
+                console.log(`Sync completed: ${result.syncedCount} annotations synced`);
+                
+                // Reload current image data to show synced annotations
+                await this.reloadCurrentImageData();
+            } else {
+                console.error('Sync failed:', result.errors);
+            }
+            
+        } catch (error) {
+            console.error('Error syncing sample data:', error);
+            errorLogger.logError('Sample data sync failed', {
+                type: 'sync_error',
+                operation: 'sync_sample_data'
+            }, error);
+        }
+    }
+
+    /**
+     * Reload current image data (useful after mode transitions)
+     */
+    async reloadCurrentImageData() {
+        try {
+            const currentImage = imageManager.getCurrentImage();
+            if (currentImage) {
+                console.log('Reloading current image data after mode transition');
+                await this.loadAnnotationsForCurrentImage(currentImage.data.id);
+            }
+        } catch (error) {
+            console.error('Failed to reload current image data:', error);
         }
     }
 
@@ -309,10 +537,18 @@ class App {
         console.log('Previous image requested');
         
         try {
-            this.showLoadingIndicator();
-            const image = await imageManager.previousImage();
+            const result = await loadingManager.trackOperation(
+                'navigate-previous',
+                imageManager.previousImage(),
+                {
+                    loadingMessage: 'Loading previous image...',
+                    successMessage: 'Previous image loaded',
+                    errorMessage: 'Failed to load previous image',
+                    showSuccess: false // Don't show success toast for navigation
+                }
+            );
             
-            if (image) {
+            if (result) {
                 console.log('Successfully navigated to previous image');
             } else {
                 console.log('Already at first image or no images available');
@@ -320,9 +556,12 @@ class App {
             
         } catch (error) {
             console.error('Failed to navigate to previous image:', error);
+            errorLogger.logError('Navigation to previous image failed', {
+                type: 'navigation_error',
+                direction: 'previous',
+                currentIndex: imageManager.getCurrentImageIndex()
+            }, error);
             statusBanner.showError('Failed to load previous image');
-        } finally {
-            this.hideLoadingIndicator();
         }
     }
 
@@ -335,10 +574,18 @@ class App {
         console.log('Next image requested');
         
         try {
-            this.showLoadingIndicator();
-            const image = await imageManager.nextImage();
+            const result = await loadingManager.trackOperation(
+                'navigate-next',
+                imageManager.nextImage(),
+                {
+                    loadingMessage: 'Loading next image...',
+                    successMessage: 'Next image loaded',
+                    errorMessage: 'Failed to load next image',
+                    showSuccess: false // Don't show success toast for navigation
+                }
+            );
             
-            if (image) {
+            if (result) {
                 console.log('Successfully navigated to next image');
             } else {
                 console.log('Already at last image or no images available');
@@ -346,9 +593,12 @@ class App {
             
         } catch (error) {
             console.error('Failed to navigate to next image:', error);
+            errorLogger.logError('Navigation to next image failed', {
+                type: 'navigation_error',
+                direction: 'next',
+                currentIndex: imageManager.getCurrentImageIndex()
+            }, error);
             statusBanner.showError('Failed to load next image');
-        } finally {
-            this.hideLoadingIndicator();
         }
     }
 
@@ -364,10 +614,18 @@ class App {
         console.log(`Navigate to image index ${index} requested`);
         
         try {
-            this.showLoadingIndicator();
-            const image = await imageManager.goToImage(index);
+            const result = await loadingManager.trackOperation(
+                'navigate-to-image',
+                imageManager.goToImage(index),
+                {
+                    loadingMessage: `Loading image ${index + 1}...`,
+                    successMessage: `Image ${index + 1} loaded`,
+                    errorMessage: `Failed to load image ${index + 1}`,
+                    showSuccess: false
+                }
+            );
             
-            if (image) {
+            if (result) {
                 console.log(`Successfully navigated to image index ${index}`);
             } else {
                 console.log(`Failed to navigate to image index ${index}`);
@@ -375,9 +633,13 @@ class App {
             
         } catch (error) {
             console.error(`Failed to navigate to image index ${index}:`, error);
+            errorLogger.logError('Navigation to specific image failed', {
+                type: 'navigation_error',
+                direction: 'goto',
+                targetIndex: index,
+                currentIndex: imageManager.getCurrentImageIndex()
+            }, error);
             statusBanner.showError(`Failed to load image ${index + 1}`);
-        } finally {
-            this.hideLoadingIndicator();
         }
     }
 
@@ -445,12 +707,31 @@ class App {
 
     onImageLoadError(error, imageData) {
         console.error(`Failed to load image: ${imageData?.filename || 'unknown'}`, error);
+        
+        // Log the error with detailed context
+        errorLogger.logImageError(
+            imageData?.filename || 'unknown',
+            error,
+            imageData
+        );
+        
+        // Show image error placeholder in canvas container
+        const canvasContainer = document.querySelector('.canvas-container');
+        if (canvasContainer) {
+            loadingManager.showImageError(
+                canvasContainer, 
+                imageData?.filename, 
+                error.message || 'Image could not be loaded'
+            );
+        }
+        
+        // Show status banner
         statusBanner.showImageLoadError(imageData?.filename);
         
         // Try to skip to next image if available
         if (imageManager.canNavigateNext()) {
             console.log('Attempting to skip to next image after load error');
-            setTimeout(() => this.nextImage(), 1000);
+            setTimeout(() => this.nextImage(), 2000); // Wait 2 seconds before auto-skip
         }
     }
 
@@ -567,23 +848,28 @@ class App {
         console.log('Save annotations requested');
         
         try {
-            this.showLoadingIndicator();
-            
-            const result = await annotationManager.saveAnnotations();
+            const result = await loadingManager.trackOperation(
+                'save-annotations',
+                annotationManager.saveAnnotations(),
+                {
+                    loadingMessage: 'Saving annotations...',
+                    successMessage: 'Annotations saved successfully',
+                    errorMessage: 'Failed to save annotations'
+                }
+            );
             
             if (result.success) {
-                statusBanner.showSuccess(result.message);
                 console.log(`Successfully saved ${result.savedCount} annotations`);
             } else {
-                statusBanner.showError(result.message);
                 console.error('Failed to save annotations:', result.errors);
             }
             
         } catch (error) {
             console.error('Error saving annotations:', error);
-            statusBanner.showError('Failed to save annotations. Check console for details.');
-        } finally {
-            this.hideLoadingIndicator();
+            errorLogger.logError('Annotation save operation failed', {
+                type: 'save_error',
+                operation: 'save_annotations'
+            }, error);
         }
     }
 
@@ -669,24 +955,15 @@ class App {
      */
     async performExport(format, scope, includeHistory) {
         try {
-            this.showLoadingIndicator();
-            
-            let result;
-            
-            if (scope === 'all') {
-                result = annotationManager.exportAllAnnotations(format);
-            } else {
-                // Get current image metadata for proper export
-                const currentImage = imageManager.getCurrentImage();
-                const imageMetadata = currentImage ? {
-                    id: currentImage.data.id,
-                    filename: currentImage.data.filename,
-                    width: currentImage.element.naturalWidth,
-                    height: currentImage.element.naturalHeight
-                } : null;
-                
-                result = annotationManager.exportAnnotations(format, null, imageMetadata);
-            }
+            const result = await loadingManager.trackOperation(
+                'export-annotations',
+                this.doExport(format, scope, includeHistory),
+                {
+                    loadingMessage: 'Exporting annotations...',
+                    successMessage: 'Export completed successfully',
+                    errorMessage: 'Export failed'
+                }
+            );
             
             if (result.success) {
                 // Create and download file
@@ -729,19 +1006,45 @@ class App {
                     ? `Exported ${result.imageCount || 1} images with ${result.annotationCount} annotations`
                     : `Exported ${result.annotationCount} annotations`;
                     
-                statusBanner.showSuccess(message);
+                loadingManager.showSuccess(message, { type: 'success' });
                 console.log(`Export completed: ${result.filename}`);
             } else {
-                statusBanner.showError(result.error);
                 console.error('Failed to export annotations:', result.error);
             }
             
         } catch (error) {
             console.error('Error exporting annotations:', error);
-            statusBanner.showError('Failed to export annotations. Check console for details.');
-        } finally {
-            this.hideLoadingIndicator();
+            errorLogger.logError('Annotation export operation failed', {
+                type: 'export_error',
+                format,
+                scope,
+                includeHistory
+            }, error);
         }
+    }
+
+    /**
+     * Perform the actual export operation
+     */
+    async doExport(format, scope, includeHistory) {
+        let result;
+        
+        if (scope === 'all') {
+            result = annotationManager.exportAllAnnotations(format);
+        } else {
+            // Get current image metadata for proper export
+            const currentImage = imageManager.getCurrentImage();
+            const imageMetadata = currentImage ? {
+                id: currentImage.data.id,
+                filename: currentImage.data.filename,
+                width: currentImage.element.naturalWidth,
+                height: currentImage.element.naturalHeight
+            } : null;
+            
+            result = annotationManager.exportAnnotations(format, null, imageMetadata);
+        }
+        
+        return result;
     }
 
     /**
@@ -751,23 +1054,28 @@ class App {
         console.log('Manual save requested');
         
         try {
-            this.showLoadingIndicator();
-            
-            const result = await annotationManager.manualSave();
+            const result = await loadingManager.trackOperation(
+                'manual-save',
+                annotationManager.manualSave(),
+                {
+                    loadingMessage: 'Performing manual save...',
+                    successMessage: 'Manual save completed',
+                    errorMessage: 'Manual save failed'
+                }
+            );
             
             if (result.success) {
-                statusBanner.showSuccess(result.message);
                 console.log('Manual save completed:', result);
             } else {
-                statusBanner.showError(result.message);
                 console.error('Manual save failed:', result.error);
             }
             
         } catch (error) {
             console.error('Error during manual save:', error);
-            statusBanner.showError('Manual save failed. Check console for details.');
-        } finally {
-            this.hideLoadingIndicator();
+            errorLogger.logError('Manual save operation failed', {
+                type: 'save_error',
+                operation: 'manual_save'
+            }, error);
         }
     }
 
@@ -967,12 +1275,12 @@ class App {
 
     onSaveComplete(result) {
         console.log(`Save completed: ${result.savedCount} annotations saved`);
-        statusBanner.showSuccess(result.message);
+        loadingManager.showSuccess(result.message, { type: 'success' });
     }
 
     onSaveError(result) {
         console.error(`Save failed: ${result.errorCount} errors`, result.errors);
-        statusBanner.showError(result.message);
+        loadingManager.showSuccess(result.message, { type: 'error', duration: 5000 });
     }
 
     /**
@@ -1016,33 +1324,25 @@ class App {
     }
 
     /**
-     * Status and Loading Methods
+     * Status and Loading Methods (Legacy - now using LoadingManager)
      */
     showStatusBanner(message, type = 'warning') {
-        if (this.statusBanner && this.statusMessage) {
-            this.statusMessage.textContent = message;
-            this.statusBanner.className = `alert alert-${type} alert-dismissible fade show`;
-            this.statusBanner.classList.remove('d-none');
-        }
+        statusBanner.show(message, type);
         console.log(`Status: ${type} - ${message}`);
     }
 
     hideStatusBanner() {
-        if (this.statusBanner) {
-            this.statusBanner.classList.add('d-none');
-        }
+        statusBanner.hide();
     }
 
     showLoadingIndicator() {
-        if (this.loadingIndicator) {
-            this.loadingIndicator.classList.remove('d-none');
-        }
+        // Legacy method - now using LoadingManager
+        loadingManager.showLoading('legacy', { message: 'Loading...' });
     }
 
     hideLoadingIndicator() {
-        if (this.loadingIndicator) {
-            this.loadingIndicator.classList.add('d-none');
-        }
+        // Legacy method - now using LoadingManager
+        loadingManager.hideLoading('legacy');
     }
 }
 
@@ -1055,15 +1355,118 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Make app instance globally available for debugging
     window.imaApp = app;
+    
+    // Make error logger globally available for debugging
+    window.imaErrorLogger = errorLogger;
+    
+    // Add debug utilities to window
+    window.imaDebug = {
+        // Get error statistics
+        getErrorStats: () => errorLogger.getErrorStats(),
+        
+        // Get error history
+        getErrors: (level = null, limit = 10) => errorLogger.getErrorHistory(level, limit),
+        
+        // Export error logs
+        exportLogs: (format = 'json') => {
+            const logs = errorLogger.exportLogs(format);
+            console.log('Error logs exported:', logs);
+            return logs;
+        },
+        
+        // Clear error history
+        clearErrors: () => errorLogger.clearHistory(),
+        
+        // Enable/disable debug mode
+        setDebugMode: (enabled) => {
+            localStorage.setItem('ima-debug', enabled ? 'true' : 'false');
+            console.log(`Debug mode ${enabled ? 'enabled' : 'disabled'}. Reload page to take effect.`);
+        },
+        
+        // Get current debug status
+        isDebugEnabled: () => errorLogger.isDebugEnabled(),
+        
+        // Log test error for debugging
+        testError: (message = 'Test error') => {
+            errorLogger.logError(message, { type: 'test_error', source: 'debug_console' });
+        },
+        
+        // Get application state
+        getAppState: () => {
+            if (window.imaApp) {
+                return {
+                    initialized: window.imaApp.initialized,
+                    state: window.imaApp.state,
+                    modules: Object.keys(window.imaApp.modules || {})
+                };
+            }
+            return null;
+        },
+        
+        // Show help
+        help: () => {
+            console.log(`
+IMA Annotate Frontend Debug Console
+===================================
+
+Available commands:
+- imaDebug.getErrorStats()          Get error statistics
+- imaDebug.getErrors(level, limit)  Get error history (level: 'ERROR', 'WARNING', 'INFO', 'DEBUG')
+- imaDebug.exportLogs(format)       Export logs ('json' or 'csv')
+- imaDebug.clearErrors()            Clear error history
+- imaDebug.setDebugMode(enabled)    Enable/disable debug logging
+- imaDebug.isDebugEnabled()         Check if debug mode is enabled
+- imaDebug.testError(message)       Log a test error
+- imaDebug.getAppState()            Get current application state
+- imaDebug.help()                   Show this help
+
+Global objects:
+- window.imaApp                     Main application instance
+- window.imaErrorLogger             Error logger instance
+
+Examples:
+- imaDebug.getErrors('ERROR', 5)    Get last 5 errors
+- imaDebug.setDebugMode(true)       Enable debug logging
+- imaDebug.exportLogs('json')       Export logs as JSON
+            `);
+        }
+    };
+    
+    // Log successful initialization
+    errorLogger.logInfo('Application initialized successfully', {
+        type: 'initialization',
+        modules: ['app', 'errorLogger', 'loadingManager']
+    });
+    
+    // Show debug help if debug mode is enabled
+    if (errorLogger.isDebugEnabled()) {
+        console.log('%cIMA Annotate Frontend - Debug Mode Enabled', 'color: #17a2b8; font-weight: bold; font-size: 14px;');
+        console.log('Type imaDebug.help() for available debug commands');
+    }
 });
 
 /**
- * Handle unhandled errors
+ * Handle unhandled errors (now handled by ErrorLogger)
+ * These are kept for compatibility but ErrorLogger handles the actual logging
  */
 window.addEventListener('error', (event) => {
-    console.error('Unhandled error:', event.error);
+    // ErrorLogger already handles this, but we can add app-specific context
+    if (window.imaApp) {
+        errorLogger.logError('Unhandled application error', {
+            type: 'unhandled_error',
+            appInitialized: window.imaApp.initialized,
+            currentState: window.imaApp.state
+        });
+    }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
+    // ErrorLogger already handles this, but we can add app-specific context
+    if (window.imaApp) {
+        errorLogger.logError('Unhandled promise rejection in application', {
+            type: 'unhandled_rejection',
+            appInitialized: window.imaApp.initialized,
+            currentState: window.imaApp.state
+        });
+    }
 });
