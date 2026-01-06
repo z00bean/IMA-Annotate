@@ -31,6 +31,10 @@ IMA Annotate was built to **accelerate annotation while preserving trust, audita
 - Model inference runs on a **GPU server equipped with NVIDIA RTX 4090**
 - No model fine-tuning is required for normal operation
 
+
+![Slide demo](figs/slide-gif.gif)
+
+
 ---
 
 ## Core Pipeline
