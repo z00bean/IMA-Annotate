@@ -1400,9 +1400,6 @@ export class DrawingTools {
     }
 }
 
-// Export the DrawingTools class
-export { DrawingTools };
-
 // Create a default instance that can be imported
 export let drawingTools = null;
 

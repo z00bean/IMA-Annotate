@@ -169,6 +169,12 @@ class App {
             manualSaveBtn.addEventListener('click', () => this.manualSave());
         }
         
+        // Add load sample images button if it exists
+        const loadSampleBtn = document.getElementById('load-sample-btn');
+        if (loadSampleBtn) {
+            loadSampleBtn.addEventListener('click', () => this.loadSampleImages());
+        }
+        
         // Add reconnect button if it exists
         const reconnectBtn = document.getElementById('reconnect-btn');
         if (reconnectBtn) {
@@ -1612,6 +1618,55 @@ class App {
                 type: 'save_error',
                 operation: 'manual_save'
             }, error);
+        }
+    }
+
+    /**
+     * Load sample images functionality
+     */
+    async loadSampleImages() {
+        console.log('Load sample images requested');
+        
+        try {
+            const result = await loadingManager.trackOperation(
+                'load-sample-images',
+                imageManager.loadImages(true), // Force reload
+                {
+                    loadingMessage: 'Loading sample images...',
+                    successMessage: 'Sample images loaded successfully',
+                    errorMessage: 'Failed to load sample images'
+                }
+            );
+            
+            if (result.success) {
+                console.log(`Sample images loaded: ${result.total} images`);
+                
+                // Update UI with loaded data
+                this.updateImageCounter(
+                    result.total > 0 ? 1 : 0, 
+                    result.total
+                );
+                this.updateNavigationButtons();
+                this.updateAnnotationCounts();
+                
+                // Show sample mode notification
+                statusBanner.showSampleModeNotification();
+                
+                // Update mode indicators
+                this.updateModeIndicators('sample', 'Sample images loaded from img folder');
+                
+            } else {
+                console.error('Failed to load sample images:', result.error);
+                statusBanner.showError('Failed to load sample images. Check console for details.');
+            }
+            
+        } catch (error) {
+            console.error('Error loading sample images:', error);
+            errorLogger.logError('Sample image loading failed', {
+                type: 'image_loading_error',
+                operation: 'load_sample_images'
+            }, error);
+            statusBanner.showError('Error loading sample images. Check console for details.');
         }
     }
 

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Functionality Test - IMA Annotate Frontend</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .test-info {
+            background-color: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-success { background-color: #4caf50; }
+        .status-warning { background-color: #ff9800; }
+        .status-error { background-color: #f44336; }
+        .status-info { background-color: #2196f3; }
+    </style>
+</head>
+<body>
+    <!-- Test Information Panel -->
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-12">
+                <div class="test-info">
+                    <h4><i class="bi bi-info-circle"></i> Functionality Test Instructions</h4>
+                    <p><strong>This page tests the core functionality of the IMA Annotate Frontend:</strong></p>
+                    <ol>
+                        <li><strong>Load Sample Images:</strong> Click the "Load Sample Images" button to load images from the img folder</li>
+                        <li><strong>Navigate Images:</strong> Use the Previous/Next buttons or arrow keys to navigate between images</li>
+                        <li><strong>Draw Annotations:</strong> Click "Draw" mode and drag on the image to create bounding boxes</li>
+                        <li><strong>Select Mode:</strong> Click "Select" mode to select and modify existing annotations</li>
+                        <li><strong>ROI Mode:</strong> Click "ROI" to define regions of interest</li>
+                    </ol>
+                    <p><strong>Expected Behavior:</strong> The application should automatically fall back to sample mode since the API endpoints are dummy URLs.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Banner -->
+    <div id="status-banner" class="alert alert-warning alert-dismissible fade show d-none" role="alert" aria-live="polite" aria-atomic="true">
+        <span id="status-message"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close status message"></button>
+    </div>
+
+    <!-- Main Application -->
+    <div class="container-fluid">
+        <header class="row bg-primary text-white py-3 mb-4" role="banner">
+            <div class="col">
+                <h1 class="h3 mb-0">IMA Annotate Frontend - Simple Test</h1>
+                <p class="mb-0 small">Testing image loading, navigation, and drawing functionality</p>
+                
+                <div class="mt-2 d-flex gap-2 align-items-center">
+                    <span id="mode-indicator" class="badge bg-warning" title="Current operation mode">Sample Mode</span>
+                    <span id="connection-status" class="badge bg-secondary" title="Connection status">Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="row" id="main-content" role="main">
+            <!-- Status Panel -->
+            <div class="col-12 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title mb-0 h5">System Status</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <span class="status-indicator status-info" id="app-status"></span>
+                                <span id="app-status-text">App Loading...</span>
+                            </div>
+                            <div class="col-md-3">
+                                <span class="status-indicator status-warning" id="api-status"></span>
+                                <span id="api-status-text">API Disconnected</span>
+                            </div>
+                            <div class="col-md-3">
+                                <span class="status-indicator status-warning" id="images-status"></span>
+                                <span id="images-status-text">No Images</span>
+                            </div>
+                            <div class="col-md-3">
+                                <span class="status-indicator status-warning" id="canvas-status"></span>
+                                <span id="canvas-status-text">Canvas Ready</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="col-12 mb-3">
+                <nav class="toolbar bg-light p-3 rounded" role="toolbar" aria-label="Annotation tools">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <div class="btn-group" role="group" aria-label="Image navigation">
+                                <button type="button" id="prev-btn" class="btn btn-outline-primary" disabled
+                                        aria-label="Go to previous image" title="Previous image (Left arrow)">
+                                    <i class="bi bi-chevron-left" aria-hidden="true"></i> Previous
+                                </button>
+                                <button type="button" id="next-btn" class="btn btn-outline-primary" disabled
+                                        aria-label="Go to next image" title="Next image (Right arrow)">
+                                    Next <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <span id="image-counter" class="ms-3 text-muted" aria-live="polite" aria-label="Image position">0 / 0</span>
+                        </div>
+
+                        <div class="col-md-4 text-center">
+                            <div class="btn-group" role="group" aria-label="Drawing and selection tools">
+                                <button type="button" id="draw-btn" class="btn btn-outline-success" 
+                                        aria-label="Enable drawing mode" title="Draw new annotations (D key)"
+                                        aria-pressed="false">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i> Draw
+                                </button>
+                                <button type="button" id="select-btn" class="btn btn-outline-info active" 
+                                        aria-label="Enable selection mode" title="Select and edit annotations (V key)"
+                                        aria-pressed="true">
+                                    <i class="bi bi-cursor" aria-hidden="true"></i> Select
+                                </button>
+                                <button type="button" id="roi-btn" class="btn btn-outline-warning" 
+                                        aria-label="Enable region of interest mode" title="Define region of interest (R key)"
+                                        aria-pressed="false">
+                                    <i class="bi bi-bounding-box" aria-hidden="true"></i> ROI
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4 text-end">
+                            <div class="btn-group" role="group" aria-label="Load and save actions">
+                                <button type="button" id="load-sample-btn" class="btn btn-success" 
+                                        aria-label="Load sample images" title="Load sample images from img folder">
+                                    <i class="bi bi-images" aria-hidden="true"></i> Load Sample Images
+                                </button>
+                                <button type="button" id="save-btn" class="btn btn-outline-secondary" 
+                                        aria-label="Save annotations" title="Save annotations (Ctrl+S)">
+                                    <i class="bi bi-save" aria-hidden="true"></i> Save
+                                </button>
+                                <button type="button" id="export-btn" class="btn btn-outline-dark" 
+                                        aria-label="Export annotations" title="Export annotations to file">
+                                    <i class="bi bi-download" aria-hidden="true"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="col-lg-8">
+                <section class="canvas-container bg-white border rounded p-3" role="img" aria-label="Image annotation workspace">
+                    <div id="loading-indicator" class="text-center py-5 d-none" role="status" aria-live="polite">
+                        <div class="spinner-border text-primary" role="status" aria-hidden="true">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading image...</p>
+                    </div>
+                    <canvas id="annotation-canvas" class="border" width="800" height="600"
+                            role="img" 
+                            aria-label="Image with annotations - use drawing tools to create and edit annotations"
+                            tabindex="0"
+                            style="max-width: 100%; height: auto;">
+                        Your browser does not support the HTML5 canvas element required for annotation.
+                    </canvas>
+                    <div class="mt-2 text-center">
+                        <small class="text-muted">Canvas ready for image display and annotation</small>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Controls Sidebar -->
+            <aside class="col-lg-4" role="complementary" aria-label="Annotation controls and information">
+                <!-- Annotation Summary -->
+                <section class="card mb-3">
+                    <div class="card-header">
+                        <h2 class="card-title mb-0 h5">Annotation Summary</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center" role="group" aria-label="Annotation counts by status">
+                            <div class="col-6">
+                                <div class="badge bg-warning text-dark" aria-hidden="true">Suggested</div>
+                                <div id="suggested-count" class="h4" aria-label="Suggested annotations count">0</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="badge bg-success" aria-hidden="true">Verified</div>
+                                <div id="verified-count" class="h4" aria-label="Verified annotations count">0</div>
+                            </div>
+                        </div>
+                        <div class="row text-center mt-2">
+                            <div class="col-6">
+                                <div class="badge bg-info" aria-hidden="true">Modified</div>
+                                <div id="modified-count" class="h4" aria-label="Modified annotations count">0</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="badge bg-danger" aria-hidden="true">Rejected</div>
+                                <div id="rejected-count" class="h4" aria-label="Rejected annotations count">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Test Actions -->
+                <section class="card mb-3">
+                    <div class="card-header">
+                        <h2 class="card-title mb-0 h5">Test Actions</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button type="button" id="test-navigation" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-arrow-left-right"></i> Test Navigation
+                            </button>
+                            <button type="button" id="test-drawing" class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-pencil-square"></i> Test Drawing
+                            </button>
+                            <button type="button" id="test-selection" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-cursor"></i> Test Selection
+                            </button>
+                            <button type="button" id="clear-canvas" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-trash"></i> Clear Canvas
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Class Selection -->
+                <section class="card mb-3">
+                    <div class="card-header">
+                        <h2 class="card-title mb-0 h5">Object Classes</h2>
+                    </div>
+                    <div class="card-body">
+                        <label for="class-selector" class="form-label visually-hidden">Select object class for new annotations</label>
+                        <select id="class-selector" class="form-select" aria-label="Object class selection">
+                            <option value="Car">Car</option>
+                            <option value="Truck">Truck</option>
+                            <option value="Bus">Bus</option>
+                            <option value="Motorcycle">Motorcycle</option>
+                            <option value="Bicycle">Bicycle</option>
+                            <option value="Person">Person</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </section>
+
+                <!-- ROI Controls -->
+                <section class="card">
+                    <div class="card-header">
+                        <h2 class="card-title mb-0 h5">Region of Interest</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="roi-toggle" 
+                                   aria-describedby="roi-help">
+                            <label class="form-check-label" for="roi-toggle">
+                                Enable ROI Filtering
+                            </label>
+                        </div>
+                        <div id="roi-help" class="form-text mb-2">
+                            When enabled, only annotations within the defined region will be highlighted.
+                        </div>
+                        <button type="button" id="clear-roi-btn" class="btn btn-outline-danger btn-sm" 
+                                aria-label="Clear region of interest">
+                            <i class="bi bi-trash" aria-hidden="true"></i> Clear ROI
+                        </button>
+                    </div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Application JS -->
+    <script type="module" src="js/app.js"></script>
+    
+    <!-- Test Script -->
+    <script type="module">
+        // Simple test functionality
+        class SimpleTester {
+            constructor() {
+                this.setupTestHandlers();
+                this.monitorAppStatus();
+            }
+
+            setupTestHandlers() {
+                // Test navigation
+                document.getElementById('test-navigation')?.addEventListener('click', () => {
+                    this.testNavigation();
+                });
+
+                // Test drawing
+                document.getElementById('test-drawing')?.addEventListener('click', () => {
+                    this.testDrawing();
+                });
+
+                // Test selection
+                document.getElementById('test-selection')?.addEventListener('click', () => {
+                    this.testSelection();
+                });
+
+                // Clear canvas
+                document.getElementById('clear-canvas')?.addEventListener('click', () => {
+                    this.clearCanvas();
+                });
+            }
+
+            async testNavigation() {
+                console.log('Testing navigation...');
+                
+                // Test next button
+                const nextBtn = document.getElementById('next-btn');
+                if (nextBtn && !nextBtn.disabled) {
+                    nextBtn.click();
+                    await this.delay(1000);
+                }
+
+                // Test previous button
+                const prevBtn = document.getElementById('prev-btn');
+                if (prevBtn && !prevBtn.disabled) {
+                    prevBtn.click();
+                    await this.delay(1000);
+                }
+
+                console.log('Navigation test completed');
+            }
+
+            testDrawing() {
+                console.log('Testing drawing mode...');
+                
+                // Switch to draw mode
+                const drawBtn = document.getElementById('draw-btn');
+                if (drawBtn) {
+                    drawBtn.click();
+                }
+
+                // Simulate drawing on canvas
+                const canvas = document.getElementById('annotation-canvas');
+                if (canvas) {
+                    const rect = canvas.getBoundingClientRect();
+                    
+                    // Create mouse events for drawing
+                    const mouseDown = new MouseEvent('mousedown', {
+                        clientX: rect.left + 100,
+                        clientY: rect.top + 100,
+                        bubbles: true
+                    });
+                    
+                    const mouseMove = new MouseEvent('mousemove', {
+                        clientX: rect.left + 200,
+                        clientY: rect.top + 200,
+                        bubbles: true
+                    });
+                    
+                    const mouseUp = new MouseEvent('mouseup', {
+                        clientX: rect.left + 200,
+                        clientY: rect.top + 200,
+                        bubbles: true
+                    });
+                    
+                    canvas.dispatchEvent(mouseDown);
+                    setTimeout(() => canvas.dispatchEvent(mouseMove), 100);
+                    setTimeout(() => canvas.dispatchEvent(mouseUp), 200);
+                }
+
+                console.log('Drawing test completed');
+            }
+
+            testSelection() {
+                console.log('Testing selection mode...');
+                
+                // Switch to select mode
+                const selectBtn = document.getElementById('select-btn');
+                if (selectBtn) {
+                    selectBtn.click();
+                }
+
+                console.log('Selection test completed');
+            }
+
+            clearCanvas() {
+                console.log('Clearing canvas...');
+                
+                const canvas = document.getElementById('annotation-canvas');
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+
+                console.log('Canvas cleared');
+            }
+
+            monitorAppStatus() {
+                // Monitor application initialization
+                const checkAppStatus = () => {
+                    if (window.imaApp) {
+                        if (window.imaApp.initialized) {
+                            this.updateStatus('app-status', 'success', 'App Initialized');
+                        } else {
+                            this.updateStatus('app-status', 'warning', 'App Initializing...');
+                        }
+
+                        // Check API status
+                        if (window.imaApp.state.apiConnected) {
+                            this.updateStatus('api-status', 'success', 'API Connected');
+                        } else {
+                            this.updateStatus('api-status', 'warning', 'Sample Mode');
+                        }
+
+                        // Check images status
+                        if (window.imaApp.state.images.length > 0) {
+                            this.updateStatus('images-status', 'success', `${window.imaApp.state.images.length} Images`);
+                        } else {
+                            this.updateStatus('images-status', 'warning', 'No Images');
+                        }
+
+                        // Check canvas status
+                        const canvas = document.getElementById('annotation-canvas');
+                        if (canvas) {
+                            this.updateStatus('canvas-status', 'success', 'Canvas Ready');
+                        }
+                    } else {
+                        this.updateStatus('app-status', 'error', 'App Not Found');
+                    }
+                };
+
+                // Check status every second
+                setInterval(checkAppStatus, 1000);
+                checkAppStatus(); // Initial check
+            }
+
+            updateStatus(elementId, status, text) {
+                const indicator = document.getElementById(elementId);
+                const textElement = document.getElementById(elementId + '-text');
+                
+                if (indicator) {
+                    indicator.className = `status-indicator status-${status}`;
+                }
+                
+                if (textElement) {
+                    textElement.textContent = text;
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize tester when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            window.simpleTester = new SimpleTester();
+            console.log('Simple tester initialized');
+        });
+    </script>
+</body>
+</html>

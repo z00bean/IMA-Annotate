@@ -403,9 +403,6 @@ export class ROIManager {
     }
 }
 
-// Export the ROIManager class
-export { ROIManager };
-
 // Create a default instance that can be imported
 export const roiManager = new ROIManager();
 

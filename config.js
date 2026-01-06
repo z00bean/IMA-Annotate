@@ -10,10 +10,10 @@ export const CONFIG = {
     
     // Canvas Configuration
     CANVAS_PADDING: 10,
-    MAX_CANVAS_WIDTH: 1200,
-    MAX_CANVAS_HEIGHT: 800,
-    MIN_CANVAS_WIDTH: 400,
-    MIN_CANVAS_HEIGHT: 300,
+    MAX_CANVAS_WIDTH: 1600,
+    MAX_CANVAS_HEIGHT: 1200,
+    MIN_CANVAS_WIDTH: 600,
+    MIN_CANVAS_HEIGHT: 400,
     
     // Sample Images for Testing/Demo
     SAMPLE_IMAGES: [

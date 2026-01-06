@@ -1098,11 +1098,8 @@ export class CanvasRenderer {
 }
 
 /**
- * Export the CanvasRenderer class for instantiation
+ * Create a default instance that can be imported
  */
-export { CanvasRenderer };
-
-// Create a default instance that can be imported
 export let canvasRenderer = null;
 
 // Function to initialize the default instance

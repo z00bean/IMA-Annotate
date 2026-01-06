@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Module Test</title>
+</head>
+<body>
+    <h1>Module Loading Test</h1>
+    <div id="status">Testing modules...</div>
+    
+    <script type="module">
+        async function testModules() {
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                // Test config
+                const { CONFIG } = await import('./config.js');
+                console.log('✅ Config loaded:', CONFIG.API_BASE_URL);
+                
+                // Test canvas renderer
+                const { CanvasRenderer } = await import('./js/canvas-renderer.js');
+                console.log('✅ CanvasRenderer loaded:', CanvasRenderer);
+                
+                // Test drawing tools
+                const { DrawingTools } = await import('./js/drawing-tools.js');
+                console.log('✅ DrawingTools loaded:', DrawingTools);
+                
+                // Test ROI manager
+                const { ROIManager } = await import('./js/roi-manager.js');
+                console.log('✅ ROIManager loaded:', ROIManager);
+                
+                statusDiv.innerHTML = '✅ All modules loaded successfully! Check console for details.';
+                statusDiv.style.color = 'green';
+                
+            } catch (error) {
+                console.error('❌ Module loading failed:', error);
+                statusDiv.innerHTML = `❌ Module loading failed: ${error.message}`;
+                statusDiv.style.color = 'red';
+            }
+        }
+        
+        testModules();
+    </script>
+</body>
+</html>

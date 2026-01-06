@@ -36,8 +36,8 @@ header {
 /* Canvas Container Styles */
 .canvas-container {
     position: relative;
-    min-height: 400px;
-    max-height: 800px;
+    min-height: 600px;
+    max-height: none;
     overflow: hidden;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
@@ -50,8 +50,10 @@ header {
     background-color: #ffffff;
     border: 2px solid #dee2e6;
     border-radius: 0.375rem;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: auto;
+    min-width: 600px;
+    min-height: 400px;
 }
 
 #annotation-canvas.select-mode {
@@ -384,11 +386,12 @@ header {
     }
     
     .canvas-container {
-        min-height: 300px;
+        min-height: 400px;
     }
     
     #annotation-canvas {
-        max-width: 100%;
+        min-width: 100%;
+        width: 100%;
         height: auto;
     }
 }
