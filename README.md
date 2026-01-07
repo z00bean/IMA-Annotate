@@ -35,6 +35,9 @@ IMA Annotate was built to **accelerate annotation while preserving trust, audita
 ![Slide demo](figs/slide-gif.gif)
 
 
+![Slide demo](figs/semanticlabel-road-sign.jpg)
+
+
 ---
 
 ## Core Pipeline
