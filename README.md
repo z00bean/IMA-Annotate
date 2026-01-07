@@ -217,8 +217,6 @@ If resources and future projects allow, we would love to make IMA Annotate publi
 ## Future Directions
 
 Potential future work includes:
-- Public release (subject to funding and resources)
-- Multi-user audit trails
 - Standards-aware labeling (FHWA / MUTCD references)
 - Deeper integration with edge-collected datasets
 
