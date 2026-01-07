@@ -148,7 +148,8 @@ It is currently used in:
 
 
 - **Roadway sign annotation work** ongoing
-- 
+
+![Slide demo](figs/sign-detect.gif)
 
 ## Output Format
 
