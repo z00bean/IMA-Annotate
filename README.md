@@ -122,11 +122,19 @@ Only **Verified** objects are exportable.
 
 ---
 
-## Vehicle & Object Class Mapping (FHWA / ITE-Aligned)
+## Projects
 
-The following class table was prepared as part of a **vehicle classification and micromobility ITE project**.  
+ 
 It is currently used in:
-- ASSETS
+
+- **Roadway sign annotation work** ongoing
+
+![Slide demo](figs/sign-detect.gif)
+
+
+- Vehicle & Object Class Mapping (FHWA / ITE-Aligned) (ASSETS)
+
+The following class table was prepared as part of a **vehicle classification and micromobility ITE project**. 
 
 | Annotated Label | FHWA Class | FHWA Class Name                         | Classification Domain | Definition / Notes |
 |-----------------|------------|-----------------------------------------|-----------------------|--------------------|
@@ -146,10 +154,6 @@ It is currently used in:
 | Dog             | —          | —                                       | Animal                | Non-human animal in roadway or right-of-way |
 | Other           | —          | —                                       | Miscellaneous Object  | Unclassified objects (e.g., shopping carts, debris) |
 
-
-- **Roadway sign annotation work** ongoing
-
-![Slide demo](figs/sign-detect.gif)
 
 ## Output Format
 
