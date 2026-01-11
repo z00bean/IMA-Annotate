@@ -125,9 +125,8 @@ Only **Verified** objects are exportable.
 ## Projects
 
  
-It is currently used in:
 
-- **Roadway sign annotation work** ongoing
+- **Roadway sign annotation** (work ongoing)
 
 ![Slide demo](figs/sign-detect.gif)
 
