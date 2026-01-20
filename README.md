@@ -34,6 +34,7 @@ IMA Annotate was built to **accelerate annotation while preserving trust, audita
 
 ![Slide demo](figs/slide-gif.gif)
 
+- Option to add auxiliary metadata to annotations
 
 ![Slide demo](figs/semanticlabel-road-sign.jpg)
 
