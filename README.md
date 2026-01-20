@@ -202,7 +202,7 @@ Bounding box annotations are exported in standard formats:
 
 ## Funding Acknowledgement
 
-This work was **partly funded by the ASSETS project**.
+This work was **partly funded by MassDOT ASSETS project**.
 
 ---
 
